@@ -4,12 +4,12 @@ import threading
 import time
 
 def sleep_btn_command():
-    sleep_thread = threading.Thread(target = time.sleep, args = (12,))
-    print(sleep_thread)
+    sleep_thread = threading.Thread(target = time.sleep, args = (5,))
     sleep_thread.start()
     sleep_progressbar.start()
     sleep_thread.join()
     sleep_progressbar.stop()
+    print('Se terminó la función sleep')
 
 def nthreads():
     print(threading.enumerate())
