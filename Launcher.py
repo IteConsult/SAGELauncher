@@ -5,6 +5,8 @@
 #*Run optimization
 #*Save outputs
 
+#TODO modificar todos los códigos teniendo en cuenta que los items no son únicos
+
 import subprocess
 import tkinter as tk
 from tkinter import ttk
@@ -25,13 +27,19 @@ def connectToHANA():
         except Exception as e:
             print('Connection failed! ' + str(e))      
 
-def generate_breakout_file(BOM, ItemMaster, Facility):  #TODO esto funciona asumiendo que Alphia corrige lo de la facility en el ItemMaster
-    #TODO mirar solo la bomcode de la default facility
-    #Merging with ItemMaster to keep only 'FG' category items
-    BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'ItemWeight']], on = 'ItemNumber', how = 'left')
+def generate_breakout_file(BOM, ItemMaster, Facility):
+    #Merging with ItemMaster
+    BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
+    #Keep only BOM from DefaultFacility
+    BREAKOUT = BREAKOUT.query('Facility == DefaultFacility')
+    #Filter Bomcodes according to Facility
+    bomcode_table = {'20001': '40', '20006': '45', '20005': '40'}
+    bom_filter = BREAKOUT['BomCode'] == BREAKOUT['DefaultFacility'].map(bomcode_table)
+    BREAKOUT = BREAKOUT[bom_filter]
+    #Keep FG items only
     BREAKOUT = BREAKOUT.query('CategoryCode == "FG"').drop('CategoryCode', axis = 1)
     #Second merging with ItemMaster to keep only 'INT' category component items
-    BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'CategoryCode']], left_on = 'ComponentItemNumber', right_on = 'ItemNumber', suffixes = ['','_y'])
+    BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'CategoryCode']].groupby('ItemNumber').first(), left_on = 'ComponentItemNumber', right_on = 'ItemNumber', suffixes = ['','_y'])
     BREAKOUT = BREAKOUT.query('CategoryCode == "INT"').drop('CategoryCode', axis = 1)
     #Blend percentage calculation
     BREAKOUT['Quantity'] = BREAKOUT['Quantity'].astype(float)
@@ -39,25 +47,32 @@ def generate_breakout_file(BOM, ItemMaster, Facility):  #TODO esto funciona asum
     BREAKOUT['BlendPercentage'] = BREAKOUT['Quantity']/BREAKOUT['BlendPercentage']
     #Weight is sum of quantities
     BREAKOUT.rename({'Quantity': 'Weight'}, axis = 1, inplace = True)
-    #Bring DieCode column from Facility table
-    BREAKOUT = BREAKOUT.merge(Facility[['ItemNumber', 'DieCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
-    BREAKOUT['Concat'] = BREAKOUT['ProductType'].astype(str) + BREAKOUT['DieCode'].astype(str)
+    #Generate missing columns
+    BREAKOUT['Family'] = 'NONE'
+    BREAKOUT['color'] = 0
+    BREAKOUT['shape'] = 0
+    BREAKOUT['Type-Shape-Size Concat'] = BREAKOUT['ProductType'].copy()
+    BREAKOUT['Dry-Liquid-Digest Concat'] = 0
+    BREAKOUT['Family Sequence'] = 0
+    BREAKOUT['Max Run Size (lb)'] = 0
     #Set column order
-    BREAKOUT = BREAKOUT[['ItemNumber', 'BomCode', 'ComponentItemNumber', 'BlendPercentage', 'Concat', 'Weight']]
+    BREAKOUT = BREAKOUT[['ItemNumber', 'Family', 'ComponentItemNumber', 'color', 'shape', 'ProductType', 'Type-Shape-Size Concat', 'BlendPercentage', 'Weight']]
     #Change column names
-    BREAKOUT.rename({'ItemNumber': 'Finished Good', 'ComponentItemNumber': 'Component Formula', 'BlendPercentage': 'Blend Percentage'}, axis = 1, inplace = True)    
+    BREAKOUT.rename({'ItemNumber': 'Finished good', 'ComponentItemNumber': 'Component formula', 'ProductType': 'Category', 'BlendPercentage': 'Blend percentage'}, axis = 1, inplace = True)    
 
     return BREAKOUT
 
-def generate_packlines_and_extruders(RoutingAndRates, WorkCenters, ItemMaster, Model_WorkCenters):
-    #TODO filtrar las BomCodes
+def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility):
+    #Filter Bomcodes according to Facility
+    bomcode_table = {'20001': '40', '20006': '45', '20005': '40'}
+    bomcode_filter = RoutingAndRates['BomCode'] == RoutingAndRates['Facility'].map(bomcode_table)
     #Keep only those workcenters with UseStatus equal to 2 and are either packlines or extruders
-    RATES = RoutingAndRates.query('UseStatus == "2"').merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area']], on = 'WorkCenter', how = 'left')
-    packline_workcenter_filter = RATES['Area'] == 'PACK'
-    extruder_workcenter_filter = RATES['Area'] == 'EXTR'
-    RATES = RATES[packline_workcenter_filter | extruder_workcenter_filter]
-    #Rate calculation
+    RATES = RoutingAndRates[bomcode_filter].query('UseStatus == "2"').merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'left')
+    RATES = RATES.query('Area == "PACK" or Area == "EXTR"')
+    #Merging with ItemMaster
     RATES = RATES.merge(ItemMaster[['ItemNumber', 'ItemWeight', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'inner')
+    #Filter by category
+    RATES = RATES.query('(Area == "PACK" and CategoryCode == "FG") or (Area == "EXTR" and CategoryCode == "INT")').copy()
     RATES['OperationTimeUnits'] = RATES['OperationTimeUnits'].map({'1': '1', '2': '60'})
     RATES = RATES.astype({'BaseQuantity': float, 'ItemWeight': float, 'OperationTimeUnits': int, 'OperationTime': float})
     RATES['Pounds/hour'] = RATES['BaseQuantity']*RATES['ItemWeight']/(RATES['OperationTimeUnits']*RATES['OperationTime'])
@@ -66,59 +81,77 @@ def generate_packlines_and_extruders(RoutingAndRates, WorkCenters, ItemMaster, M
     #Drop columns that won't be needed anymore
     RATES.drop(['UseStatus', 'OperationNumber', 'OperationUOM', 'OperationTime', 'OperationTimeUnits', 'BaseQuantity', 'ItemWeight'], axis = 1, inplace = True)
     #Split the dataframe
-    PACKLINES = RATES.query('Area == "PACK" & CategoryCode == "FG"').drop(['Area', 'CategoryCode'], axis = 1)
-    EXTRUDERS = RATES.query('Area == "EXTR" & CategoryCode == "INT"').drop(['Area', 'CategoryCode'], axis = 1)
+    PACKLINES = RATES.query('Area == "PACK"').drop(['Area', 'CategoryCode'], axis = 1)
+    EXTRUDERS = RATES.query('Area == "EXTR"').drop(['Area', 'CategoryCode'], axis = 1)
     #Add Shrinkage column to EXTRUDERS table
     EXTRUDERS['Shrinkage'] = 0.001
-    #TODO Add isolate column to PACKLINES table
+    #Bring MinRunSize column from Facility table
+    EXTRUDERS = EXTRUDERS.merge(Facility.query('ItemStatus == "1"')[['ItemNumber', 'ItemFacility', 'FormulaMinRunSize']], left_on = ['ItemNumber', 'Facility'], right_on = ['ItemNumber', 'ItemFacility'], how = 'left')
     #Rename columns
     EXTRUDERS = EXTRUDERS.rename({'ItemNumber': 'Component Formula', 'Model plant': 'Location', 'Model Workcenter': 'Extruder', 'WorkCenter': 'Code'}, axis = 1)
     PACKLINES = PACKLINES.rename({'ItemNumber': 'Finished Good', 'Model Workcenter': 'Packline', 'WorkCenter': 'Code', 'Model plant': 'plant'}, axis = 1)
-    PACKLINES = PACKLINES[['Finished Good', 'plant', 'Packline', 'Code', 'Pounds/hour']]
-    EXTRUDERS = EXTRUDERS[['Component Formula', 'Location', 'Extruder', 'Code', 'Pounds/hour', 'Shrinkage']]
-    
+    PACKLINES = PACKLINES[['Finished Good', 'plant', 'Packline', 'Code', 'Pounds/hour', 'Isolate']]
+    EXTRUDERS = EXTRUDERS[['Component Formula', 'Location', 'Extruder', 'Code', 'Pounds/hour', 'Shrinkage', 'FormulaMinRunSize']]
     return PACKLINES, EXTRUDERS
 
-def generate_demand(WorkOrders, ItemMaster, Model_Workcenters):
-    #TODO traer la columna Formula y Original due date
-    DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CustomerName', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
+def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters):
+    #TODO validar que todos los FG estén en el Breakout
+    DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
     fg_filter = DEMAND['CategoryCode'] == 'FG'
     DEMAND = DEMAND[fg_filter]
+    DEMAND['Customer'] = 0
+    #TODO traer la Formula cuando la manden los de Alphia
+    DEMAND['Formula'] = 0
     DEMAND['Due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
     DEMAND['Raw material date'] = DEMAND['Due date'] - datetime.timedelta(15)
     DEMAND['Inventory'] = 0
-    DEMAND['Priority'] = 0
     DEMAND['Priority product'] = 0
-    DEMAND = DEMAND.merge(Model_Workcenters[['WorkCenter', 'Model plant']], on = 'WorkCenter', how = 'left')
+    DEMAND['Priority'] = 0
+    DEMAND = DEMAND.merge(Model_WorkCenters[['WorkCenter', 'Model plant']], on = 'WorkCenter', how = 'left')
     DEMAND['Purchase order'] = 'missing'
     DEMAND['Entity'] = 'CJFoods'
     DEMAND['Sales order'] = 'missing'
+    #TODO traer el original due date cuando lo manden los de Alphia
     DEMAND['Original due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
+    #TODO corregir process date?
     DEMAND['Process date'] = 'week ' + str(datetime.date.today().isocalendar()[1] + 3)
     DEMAND = DEMAND.astype({'PlannedQty': float, 'CompletedQty': float})
     DEMAND['Demand quantity (pounds)'] = DEMAND['PlannedQty'] - DEMAND['CompletedQty']
-    DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'PlannedQty': 'Demand quantity (pounds)',
-                   'Model plant': 'Location', 'WorkCenter': 'Packline', 'WorkOrderNumber': 'Work order'}, axis = 1, inplace = True)
-    DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Inventory', 'Priority product', 'Priority', 'Raw material date', 
+    DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location', 
+                   'WorkCenter': 'Packline', 'WorkOrderNumber': 'Work order'}, axis = 1, inplace = True)
+    DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Formula', 'Inventory', 'Priority product', 'Priority', 'Raw material date', 
                      'Demand quantity (pounds)', 'Due date', 'Location', 'Purchase order', 'Sales order', 'Original due date',
-                     'Entity', 'Work order', 'Packline', 'Process date']]
+                     'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
 
     return DEMAND
 
-def generate_inventory_bulk(Inventory, ItemMaster, Facility):
+def generate_inventory_bulk(Inventory, ItemMaster, Facility, Demand, Breakout):
     #TODO hay que repensarla cuando arreglen lo de la Facility en el ItemMaster
     INVENTORY_BULK = Inventory.query('ItemStatus == "A"').merge(ItemMaster[['ItemNumber', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
     INVENTORY_BULK.query('CategoryCode == "INT"', inplace = True)
     INVENTORY_BULK.drop('ItemStatus', axis = 1, inplace = True)
     INVENTORY_BULK['StockQuantity'] = INVENTORY_BULK['StockQuantity'].astype(float)
-    INVENTORY_BULK = INVENTORY_BULK.groupby(['ItemNumber', 'Facility']).sum()
-    INVENTORY_BULK.reset_index(inplace = True)
+    INVENTORY_BULK = INVENTORY_BULK.groupby(['ItemNumber', 'Facility']).sum().reset_index().rename({'StockQuantity': 'Quantity'}, axis = 1)
+    #TODO Rename columns
     
     #TODO validar el inventory
+        #TODO hacer que sea independiente de la Demanda y el Breakout?
+        #TODO validar el ItemStatus de la tabla Facility
+    VALIDATION = Demand[['Finished good', 'Facility', 'Demand quantity (pounds)']].groupby(['Finished good', 'Facility']).sum().reset_index()
+    VALIDATION = VALIDATION.merge(Breakout[['Finished good', 'Component formula', 'Blend percentage']], on = 'Finished good', how = 'left')
+    VALIDATION['Quantity'] = VALIDATION['Demand quantity (pounds)'].astype(float) * VALIDATION['Blend percentage'].astype(float)
+    #TODO quitar después de validar la Demanda
+    VALIDATION.dropna(subset = ['Component formula'], inplace = True)
+    #TODO cambiar el 3 por un 2
+    VALIDATION = VALIDATION.merge(Facility[['ItemNumber', 'ItemFacility', 'ItemStatus', 'Buyable']].query('ItemStatus == "1"').drop('ItemStatus', axis = 1),
+                                  left_on = ['Component formula', 'Facility'], right_on = ['ItemNumber', 'ItemFacility'], how = 'left').query('Buyable == "2"')
+    VALIDATION = VALIDATION[['Component formula', 'Facility', 'Quantity']].groupby(['Component formula', 'Facility']).sum().reset_index()
     
+    AUX = INVENTORY_BULK.merge(VALIDATION, suffixes = ['_actual', '_needed'], left_on = ['ItemNumber', 'Facility'], right_on = ['Component formula', 'Facility'], how = 'outer')
+
     return INVENTORY_BULK
     
-def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_Workcenters, Inventory, WorkCenters):
+def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters):
 
     #Model files generation and uploading
 
@@ -136,7 +169,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             print('Failed to upload Breakout table to HANA: ' + str(e))
     #2) Packlines and extruders
     try:
-        PACKLINES, EXTRUDERS = generate_packlines_and_extruders(RoutingAndRates, WorkCenters, ItemMaster)
+        PACKLINES, EXTRUDERS = generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility)
         print('Packlines and Extruders tables succesfully generated.')
     except Exception as e:
         print('Failed to generate Packlines and Extruders tables: ' + str(e))
@@ -153,7 +186,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             print('Failed to upload Extruders table to HANA: ' + str(e))
     #3) Demand
     try:
-        DEMAND = generate_demand(WorkOrders, ItemMaster, Model_Workcenters)
+        DEMAND = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters)
         print('Demand table succesfully generated.')
     except Exception as e:
         print('Failed to generate Demand table: ' + str(e))
@@ -165,14 +198,14 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             print('Failed to upload Demand table to HANA: ' + str(e))
     #4) Inventory bulk (es importante que el Inventory bulk se cree después que la demanda y el breakout para poder validarlo)
     try:
-        INVENTORY_BULK = generate_inventory_bulk(Inventory, ItemMaster)
+        INVENTORY_BULK = generate_inventory_bulk(Inventory, ItemMaster, Facility, DEMAND, BREAKOUT)
         print('Inventory bulk table succesfully generated.')
     except Exception as e:
         print('Failed to generate Inventory bulk table: ' + str(e))
     else:
         try:
             INVENTORY_BULK.to_sql('inventory_bulk', schema = 'anylogic', con = connection_to_HANA, if_exists = 'replace')
-            print('Iventory bulk table succesfully uploaded to HANA.')
+            print('Inventory bulk table succesfully uploaded to HANA.')
         except Exception as e:
             print('Failed to upload Inventory bulk table to HANA: ' + str(e))
 
@@ -208,12 +241,12 @@ def update_db_from_SAGE():
             print(f'Couldn\'t save {table} table into HANA. ' + str(e))
 
     #Read manual files from HANA
-    manual_files = ['Model_Workcenters']
+    manual_files = ['Model_WorkCenters']
 
     for table in manual_files:
         globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA)
 
-    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_Workcenters, Inventory, WorkCenters)
+    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters)
 
 def generate_model_files_from_backup():
 
@@ -261,7 +294,7 @@ def run_experiment(experiment):
     
 window = tk.Tk()
 window.title('Alphia Launcher')
-window.state("zoomed")
+#window.state("zoomed")
 
 update_db_from_SAGE_btn = tk.Button(text = 'Update database and model files from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
 update_db_from_SAGE_btn.pack(pady = 10)
