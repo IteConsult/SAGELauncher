@@ -29,7 +29,7 @@ def connectToHANA():
 
 def generate_breakout_file(BOM, ItemMaster, Facility):
     #Merging with ItemMaster
-    BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
+    BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagSize']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
     #Keep only BOM from DefaultFacility
     BREAKOUT = BREAKOUT.query('Facility == DefaultFacility')
     #Filter Bomcodes according to Facility
@@ -67,7 +67,7 @@ def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCent
     bomcode_table = {'20001': '40', '20006': '45', '20005': '40'}
     bomcode_filter = RoutingAndRates['BomCode'] == RoutingAndRates['Facility'].map(bomcode_table)
     #Keep only those workcenters with UseStatus equal to 2 and are either packlines or extruders
-    RATES = RoutingAndRates[bomcode_filter].query('UseStatus == "2"').merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'left')
+    RATES = RoutingAndRates[bomcode_filter].query('UseStatus == "2"').merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'inner')
     RATES = RATES.query('Area == "PACK" or Area == "EXTR"')
     #Merging with ItemMaster
     RATES = RATES.merge(ItemMaster[['ItemNumber', 'ItemWeight', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'inner')
@@ -88,17 +88,33 @@ def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCent
     #Bring MinRunSize column from Facility table
     EXTRUDERS = EXTRUDERS.merge(Facility.query('ItemStatus == "1"')[['ItemNumber', 'ItemFacility', 'FormulaMinRunSize']], left_on = ['ItemNumber', 'Facility'], right_on = ['ItemNumber', 'ItemFacility'], how = 'left')
     #Rename columns
-    EXTRUDERS = EXTRUDERS.rename({'ItemNumber': 'Component Formula', 'Model plant': 'Location', 'Model Workcenter': 'Extruder', 'WorkCenter': 'Code'}, axis = 1)
-    PACKLINES = PACKLINES.rename({'ItemNumber': 'Finished Good', 'Model Workcenter': 'Packline', 'WorkCenter': 'Code', 'Model plant': 'plant'}, axis = 1)
-    PACKLINES = PACKLINES[['Finished Good', 'plant', 'Packline', 'Code', 'Pounds/hour', 'Isolate']]
-    EXTRUDERS = EXTRUDERS[['Component Formula', 'Location', 'Extruder', 'Code', 'Pounds/hour', 'Shrinkage', 'FormulaMinRunSize']]
+    EXTRUDERS = EXTRUDERS.rename({'ItemNumber': 'Component formula', 'Model plant': 'Location', 'Model Workcenter': 'Extruder', 'WorkCenter': 'Code'}, axis = 1)
+    PACKLINES = PACKLINES.rename({'ItemNumber': 'Finished good', 'Model Workcenter': 'Packline', 'WorkCenter': 'Code', 'Model plant': 'plant'}, axis = 1)
+    PACKLINES = PACKLINES[['Finished good', 'plant', 'Packline', 'Code', 'Pounds/hour', 'Isolate']]
+    EXTRUDERS = EXTRUDERS[['Component formula', 'Location', 'Extruder', 'Code', 'Pounds/hour', 'Shrinkage', 'FormulaMinRunSize']]
+    
     return PACKLINES, EXTRUDERS
 
-def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters):
-    #TODO validar que todos los FG estén en el Breakout
-    DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
-    fg_filter = DEMAND['CategoryCode'] == 'FG'
-    DEMAND = DEMAND[fg_filter]
+def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS):
+    DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
+    #Filter only FG items
+    DEMAND = DEMAND.query('CategoryCode == "FG"').copy()
+    #Filter items not in Brekaout
+    DEMAND['in_breakout'] = DEMAND['ItemNumber'].isin(BREAKOUT['Finished good'].values)
+    NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber']]
+    DEMAND = DEMAND.query('in_breakout == True').copy()
+    #Keep only FG whose every CF has extrusion rate (TODO or is a buyable)
+    CFS_IN_DEMAND = DEMAND[['ItemNumber']].merge(BREAKOUT[['Finished good', 'Component formula']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
+    CFS_IN_DEMAND = CFS_IN_DEMAND.merge(EXTRUDERS[['Component formula']].groupby('Component formula', as_index = False).first(), on = 'Component formula', how = 'left', indicator = True)
+    NOT_IN_EXTRUDERS = CFS_IN_DEMAND.query('_merge == "left_only"').copy()[['Component formula', 'Finished good']]
+    CFS_IN_DEMAND = CFS_IN_DEMAND[['Finished good', '_merge']].replace({'both': True, 'left_only': False}).groupby('Finished good').all()
+    DEMAND = DEMAND.merge(CFS_IN_DEMAND.query('_merge == True').copy(), left_on = 'ItemNumber', right_on = 'Finished good', how = 'inner').drop('_merge', axis = 1)
+    #Bring Model plant column
+    DEMAND = DEMAND.merge(Model_WorkCenters[['WorkCenter', 'Model plant']], on = 'WorkCenter', how = 'left')
+    #Keep only FG with packing rate in plant
+    DEMAND = DEMAND.merge(PACKLINES[['Finished good', 'plant']], left_on = ['ItemNumber', 'Model plant'], right_on = ['Finished good', 'plant'], how = 'left', indicator = True)
+    NOT_IN_PACKLINES = DEMAND.query('_merge == "left_only"').copy()
+    #TODO traer el Customer cuando lo manden los de Alphia
     DEMAND['Customer'] = 0
     #TODO traer la Formula cuando la manden los de Alphia
     DEMAND['Formula'] = 0
@@ -107,7 +123,6 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters):
     DEMAND['Inventory'] = 0
     DEMAND['Priority product'] = 0
     DEMAND['Priority'] = 0
-    DEMAND = DEMAND.merge(Model_WorkCenters[['WorkCenter', 'Model plant']], on = 'WorkCenter', how = 'left')
     DEMAND['Purchase order'] = 'missing'
     DEMAND['Entity'] = 'CJFoods'
     DEMAND['Sales order'] = 'missing'
@@ -115,40 +130,41 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters):
     DEMAND['Original due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
     #TODO corregir process date?
     DEMAND['Process date'] = 'week ' + str(datetime.date.today().isocalendar()[1] + 3)
-    DEMAND = DEMAND.astype({'PlannedQty': float, 'CompletedQty': float})
-    DEMAND['Demand quantity (pounds)'] = DEMAND['PlannedQty'] - DEMAND['CompletedQty']
-    DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location', 
-                   'WorkCenter': 'Packline', 'WorkOrderNumber': 'Work order'}, axis = 1, inplace = True)
+    DEMAND = DEMAND.astype({'PlannedQty': float, 'CompletedQty': float, 'ItemWeight': float})
+    DEMAND['Demand quantity (pounds)'] = (DEMAND['PlannedQty'] - DEMAND['CompletedQty'])*DEMAND['ItemWeight']
+    DEMAND.rename({'CustomerName': 'Customer', 'Model plant': 'Location', 'WorkCenter': 'Packline', 
+                   'WorkOrderNumber': 'Work order'}, axis = 1, inplace = True)
     DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Formula', 'Inventory', 'Priority product', 'Priority', 'Raw material date', 
                      'Demand quantity (pounds)', 'Due date', 'Location', 'Purchase order', 'Sales order', 'Original due date',
                      'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
 
     return DEMAND
 
-def generate_inventory_bulk(Inventory, ItemMaster, Facility, Demand, Breakout):
+def generate_inventory_bulk(Inventory, ItemMaster, Facility, DEMAND, BREAKOUT):
     #TODO hay que repensarla cuando arreglen lo de la Facility en el ItemMaster
-    INVENTORY_BULK = Inventory.query('ItemStatus == "A"').merge(ItemMaster[['ItemNumber', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
+    INVENTORY_BULK = Inventory.query('ItemStatus == "A"').merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
     INVENTORY_BULK.query('CategoryCode == "INT"', inplace = True)
-    INVENTORY_BULK.drop('ItemStatus', axis = 1, inplace = True)
-    INVENTORY_BULK['StockQuantity'] = INVENTORY_BULK['StockQuantity'].astype(float)
-    INVENTORY_BULK = INVENTORY_BULK.groupby(['ItemNumber', 'Facility']).sum().reset_index().rename({'StockQuantity': 'Quantity'}, axis = 1)
+    INVENTORY_BULK.dropna(subset = ['ItemWeight'], inplace = True)
+    INVENTORY_BULK['Quantity'] = INVENTORY_BULK['StockQuantity'].astype(float) * INVENTORY_BULK['ItemWeight'].astype(float)
+    INVENTORY_BULK = INVENTORY_BULK.groupby(['ItemNumber', 'Facility']).sum().reset_index().rename({'ItemNumber': 'Component formula'}, axis = 1)
     #TODO Rename columns
-    
-    #TODO validar el inventory
-        #TODO hacer que sea independiente de la Demanda y el Breakout?
-        #TODO validar el ItemStatus de la tabla Facility
-    VALIDATION = Demand[['Finished good', 'Facility', 'Demand quantity (pounds)']].groupby(['Finished good', 'Facility']).sum().reset_index()
-    VALIDATION = VALIDATION.merge(Breakout[['Finished good', 'Component formula', 'Blend percentage']], on = 'Finished good', how = 'left')
+
+    VALIDATION = DEMAND[['Finished good', 'Facility', 'Demand quantity (pounds)']].groupby(['Finished good', 'Facility']).sum().reset_index()
+    VALIDATION = VALIDATION.merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], on = 'Finished good', how = 'left')
     VALIDATION['Quantity'] = VALIDATION['Demand quantity (pounds)'].astype(float) * VALIDATION['Blend percentage'].astype(float)
     #TODO quitar después de validar la Demanda
     VALIDATION.dropna(subset = ['Component formula'], inplace = True)
-    #TODO cambiar el 3 por un 2
     VALIDATION = VALIDATION.merge(Facility[['ItemNumber', 'ItemFacility', 'ItemStatus', 'Buyable']].query('ItemStatus == "1"').drop('ItemStatus', axis = 1),
                                   left_on = ['Component formula', 'Facility'], right_on = ['ItemNumber', 'ItemFacility'], how = 'left').query('Buyable == "2"')
     VALIDATION = VALIDATION[['Component formula', 'Facility', 'Quantity']].groupby(['Component formula', 'Facility']).sum().reset_index()
     
-    AUX = INVENTORY_BULK.merge(VALIDATION, suffixes = ['_actual', '_needed'], left_on = ['ItemNumber', 'Facility'], right_on = ['Component formula', 'Facility'], how = 'outer')
+    INVENTORY_BULK = INVENTORY_BULK.merge(VALIDATION, suffixes = ['_actual', '_needed'], left_on = ['Component formula', 'Facility'], right_on = ['Component formula', 'Facility'], how = 'outer').fillna(0)
 
+    VALIDATION = INVENTORY_BULK.query('Quantity_needed > Quantity_actual')
+    INVENTORY_BULK['Quantity'] = INVENTORY_BULK[['Quantity_needed', 'Quantity_actual']].max(axis = 1)
+    
+    INVENTORY_BULK = INVENTORY_BULK[['Component formula', 'Facility', 'Quantity']]
+    
     return INVENTORY_BULK
     
 def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters):
