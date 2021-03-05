@@ -30,10 +30,11 @@ def connectToHANA():
 def generate_breakout_file(BOM, ItemMaster, Facility):
     #Merging with ItemMaster
     BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagSize']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
+    BREAKOUT.dropna(subset = ['Facility', 'BomCode', 'ComponentItemNumber', 'Quantity', 'CategoryCode', 'DefaultFacility', 'ItemWeight', 'BagWeight'], inplace = True)
     #Keep only BOM from DefaultFacility
     BREAKOUT = BREAKOUT.query('Facility == DefaultFacility')
     #Filter Bomcodes according to Facility
-    bomcode_table = {'20001': '40', '20006': '45', '20005': '40'}
+    bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
     bom_filter = BREAKOUT['BomCode'] == BREAKOUT['DefaultFacility'].map(bomcode_table)
     BREAKOUT = BREAKOUT[bom_filter]
     #Keep FG items only
@@ -64,7 +65,7 @@ def generate_breakout_file(BOM, ItemMaster, Facility):
 
 def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility):
     #Filter Bomcodes according to Facility
-    bomcode_table = {'20001': '40', '20006': '45', '20005': '40'}
+    bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
     bomcode_filter = RoutingAndRates['BomCode'] == RoutingAndRates['Facility'].map(bomcode_table)
     #Keep only those workcenters with UseStatus equal to 2 and are either packlines or extruders
     RATES = RoutingAndRates[bomcode_filter].query('UseStatus == "2"').merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'inner')
@@ -179,7 +180,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         print('Failed to generate Breakout table: ' + str(e))
     else:
         try:
-            BREAKOUT.to_sql('breakout_file', con = connection_to_HANA, if_exists = 'replace', index = False)
+            BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = connection_to_HANA, if_exists = 'replace', index = False)
             print('Breakout table succesfully uploaded to HANA.')
         except Exception as e:
             print('Failed to upload Breakout table to HANA: ' + str(e))
@@ -191,28 +192,28 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         print('Failed to generate Packlines and Extruders tables: ' + str(e))
     else:
         try:
-            PACKLINES.to_sql('packlines', con = connection_to_HANA, if_exists = 'replace', index = False)
+            PACKLINES.to_sql('packlines', schema = 'anylogic', con = connection_to_HANA, if_exists = 'replace', index = False)
             print('Packlines table succesfully uploaded to HANA.')
         except Exception as e:
             print('Failed to upload Packlines table to HANA: ' + str(e))
         try:
-            EXTRUDERS.to_sql('extruders', con = connection_to_HANA, if_exists ='replace', index = False)
+            EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = connection_to_HANA, if_exists ='replace', index = False)
             print('Extruders table succesfully uploaded to HANA.')
         except Exception as e:
             print('Failed to upload Extruders table to HANA: ' + str(e))
-    #3) Demand
+    #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
     try:
-        DEMAND = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters)
+        DEMAND = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS)
         print('Demand table succesfully generated.')
     except Exception as e:
         print('Failed to generate Demand table: ' + str(e))
     else:
         try:
-            DEMAND.to_sql('demand', con = connection_to_HANA, if_exists = 'replace', index = False)
+            DEMAND.to_sql('demand', schema = 'anylogic', con = connection_to_HANA, if_exists = 'replace', index = False)
             print('Demand table succesfully uploaded to HANA.')
         except Exception as e:
             print('Failed to upload Demand table to HANA: ' + str(e))
-    #4) Inventory bulk (es importante que el Inventory bulk se cree después que la demanda y el breakout para poder validarlo)
+    #4) Inventory bulk (must be created after Demand in order to validate)
     try:
         INVENTORY_BULK = generate_inventory_bulk(Inventory, ItemMaster, Facility, DEMAND, BREAKOUT)
         print('Inventory bulk table succesfully generated.')
@@ -264,7 +265,7 @@ def update_db_from_SAGE():
 
     generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters)
 
-def generate_model_files_from_backup():
+def generate_model_files_from_backup(): #TODO cambiar la lógica: en vez de leer las tablas de HANA, que lea las tablas locales (editadas con pandastable)
 
     #Connect to HANA
     connectToHANA()
@@ -332,4 +333,5 @@ run_optimization_btn.pack(pady = 10)
 
 window.mainloop()
 
-connection_to_HANA.close()
+if connection_to_HANA:
+    connection_to_HANA.close()
