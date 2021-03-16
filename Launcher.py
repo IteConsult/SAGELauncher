@@ -29,16 +29,16 @@ def connectToHANA():
 
 def generate_breakout_file(BOM, ItemMaster, Facility):
     #Merging with ItemMaster
-    BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagSize']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
-    BREAKOUT.dropna(subset = ['Facility', 'BomCode', 'ComponentItemNumber', 'Quantity', 'CategoryCode', 'DefaultFacility', 'ItemWeight', 'BagWeight'], inplace = True)
+    BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
+    #Keep FG items only
+    BREAKOUT = BREAKOUT.query('CategoryCode == "FG"').drop('CategoryCode', axis = 1)
     #Keep only BOM from DefaultFacility
     BREAKOUT = BREAKOUT.query('Facility == DefaultFacility')
     #Filter Bomcodes according to Facility
+        #TODO transfer dictionary to manual table
     bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
     bom_filter = BREAKOUT['BomCode'] == BREAKOUT['DefaultFacility'].map(bomcode_table)
     BREAKOUT = BREAKOUT[bom_filter]
-    #Keep FG items only
-    BREAKOUT = BREAKOUT.query('CategoryCode == "FG"').drop('CategoryCode', axis = 1)
     #Second merging with ItemMaster to keep only 'INT' category component items
     BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'CategoryCode']].groupby('ItemNumber').first(), left_on = 'ComponentItemNumber', right_on = 'ItemNumber', suffixes = ['','_y'])
     BREAKOUT = BREAKOUT.query('CategoryCode == "INT"').drop('CategoryCode', axis = 1)
@@ -46,29 +46,32 @@ def generate_breakout_file(BOM, ItemMaster, Facility):
     BREAKOUT['Quantity'] = BREAKOUT['Quantity'].astype(float)
     BREAKOUT = BREAKOUT[['ItemNumber', 'Facility', 'BomCode', 'Quantity']].groupby(['ItemNumber', 'Facility', 'BomCode']).sum().rename({'Quantity': 'BlendPercentage'}, axis = 1).query('BlendPercentage != 0').merge(BREAKOUT, left_index = True, right_on = ['ItemNumber', 'Facility', 'BomCode'], how = 'right')
     BREAKOUT['BlendPercentage'] = BREAKOUT['Quantity']/BREAKOUT['BlendPercentage']
-    #Weight is sum of quantities
-    BREAKOUT.rename({'Quantity': 'Weight'}, axis = 1, inplace = True)
     #Generate missing columns
     BREAKOUT['Family'] = 'NONE'
-    BREAKOUT['color'] = 0
-    BREAKOUT['shape'] = 0
+    BREAKOUT['Color'] = 0
+    BREAKOUT['Shape'] = 0
     BREAKOUT['Type-Shape-Size Concat'] = BREAKOUT['ProductType'].copy()
     BREAKOUT['Dry-Liquid-Digest Concat'] = 0
     BREAKOUT['Family Sequence'] = 0
     BREAKOUT['Max Run Size (lb)'] = 0
-    #Set column order
-    BREAKOUT = BREAKOUT[['ItemNumber', 'Family', 'ComponentItemNumber', 'color', 'shape', 'ProductType', 'Type-Shape-Size Concat', 'BlendPercentage', 'Weight']]
     #Change column names
-    BREAKOUT.rename({'ItemNumber': 'Finished good', 'ComponentItemNumber': 'Component formula', 'ProductType': 'Category', 'BlendPercentage': 'Blend percentage'}, axis = 1, inplace = True)    
-
+    BREAKOUT.rename({'ItemNumber': 'Finished good', 'ComponentItemNumber': 'Component formula', 'ProductType': 'Category', 'BlendPercentage': 'Blend percentage', 'BagWeight': 'Weight'}, axis = 1, inplace = True)    
+    #Set column order
+    BREAKOUT = BREAKOUT[['Finished good', 'Family', 'Component formula', 'Color', 'Shape', 'Category', 'Type-Shape-Size Concat', 'Blend percentage', 'Weight']]
+    #TODO drop nan?
     return BREAKOUT
 
 def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility):
     #Filter Bomcodes according to Facility
+        #TODO transfer dictionary to manual table
     bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
     bomcode_filter = RoutingAndRates['BomCode'] == RoutingAndRates['Facility'].map(bomcode_table)
+    RATES = RoutingAndRates.copy()[bomcode_filter]
     #Keep only those workcenters with UseStatus equal to 2 and are either packlines or extruders
-    RATES = RoutingAndRates[bomcode_filter].query('UseStatus == "2"').merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'inner')
+    RATES = RATES.query('UseStatus == "2"')
+    #Bring data about workcenters
+    RATES = RATES.merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'inner')
+    #Keep only those which are either packlines or extruders
     RATES = RATES.query('Area == "PACK" or Area == "EXTR"')
     #Merging with ItemMaster
     RATES = RATES.merge(ItemMaster[['ItemNumber', 'ItemWeight', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'inner')
@@ -313,22 +316,22 @@ window = tk.Tk()
 window.title('Alphia Launcher')
 #window.state("zoomed")
 
-update_db_from_SAGE_btn = tk.Button(text = 'Update database and model files from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
+update_db_from_SAGE_btn = ttk.Button(text = 'Update database and model files from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
 update_db_from_SAGE_btn.pack(pady = 10)
 
 update_db_from_SAGE_pgb = ttk.Progressbar(mode = 'indeterminate')
 update_db_from_SAGE_pgb.pack(pady = 10)
 
-generate_model_files_btn = tk.Button(text = 'Generate new model files from HANA backup', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
+generate_model_files_btn = ttk.Button(text = 'Generate new model files from HANA backup', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
 generate_model_files_btn.pack(pady = 10)
 
 generate_model_files_pgb = ttk.Progressbar(mode = 'indeterminate')
 generate_model_files_pgb.pack(pady = 10)
 
-run_simulation_btn = tk.Button(text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
+run_simulation_btn = ttk.Button(text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
 run_simulation_btn.pack(pady = 10)
 
-run_optimization_btn = tk.Button(text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
+run_optimization_btn = ttk.Button(text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
 run_optimization_btn.pack(pady = 10)
 
 window.mainloop()
