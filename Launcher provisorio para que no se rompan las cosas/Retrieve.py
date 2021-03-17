@@ -24,7 +24,7 @@ connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:HANAtest2908@8969f
 #Upload raw SAGE tables into HANA
 for table in table_urls:
     try:
-        connection_to_HANA.execute(f'DELETE FROM {table}')
+        connection_to_HANA.execute(f'DELETE FROM "SAGE".{table}')
         globals()[table].to_sql(table.lower(), con = connection_to_HANA, if_exists = 'append', index = False, schema = 'sage')
         print(f'Table {table} was uploaded to HANA succesfully.')
     except Exception as e:
