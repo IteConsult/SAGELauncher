@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['L2.py'],
-             pathex=['C:\\Users\\admin\\Documents\\GitHub\\SAGELauncher\\Launcher provisorio para que no se rompan las cosas'],
+             pathex=['C:\\Users\\admin\\Documents\\GitHub\\SAGELauncher\\Launcher provisorio'],
              binaries=[],
              datas=[],
              hiddenimports=[],

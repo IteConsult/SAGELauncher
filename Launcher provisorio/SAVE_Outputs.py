@@ -1,11 +1,16 @@
-#import libraries
-
-import sqlalchemy_hana
-import sqlalchemy
 import pandas as pd
+import sqlalchemy
 import datetime
-from sqlalchemy import create_engine
-import datetime
+
+def connectToHANA():
+    try:
+        connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:HANAtest2908@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
+        print('Connection established.')
+    except Exception as e:
+        print('Connection failed! ' + str(e))
+        raise Exception
+        
+    return connection_to_HANA
 
 #toma la week de hoy y le suma 3, queda una mas de la que viene de JD Edwards
 
@@ -496,7 +501,7 @@ def assigned_wo(group_extruders_df, wo_demand_df):
     merge = merge[merge.ItemNumber != '0']
 
     #attribute name
-    merge.name = "GROUPE_EXTRUDERS_ASSIGNED_SAC"
+    merge.name = "GROUPED_EXTRUDERS_ASSIGNED_SAC"
     
     #return merge
     return merge
@@ -507,7 +512,7 @@ def assigned_wo(group_extruders_df, wo_demand_df):
 def upload_output_to_hana():
     
     #coneccion a variable
-    connectToHANA()
+    connection_to_HANA = connectToHANA()
     
     #Hana output
     out_due_date_backlog = pd.read_sql('SELECT * FROM "OUTPUT"."OUT_DUE_DATE_BACKLOG"', con=connection_to_HANA)
