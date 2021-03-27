@@ -721,7 +721,7 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     #Filter items not in Brekaout
     DEMAND['in_breakout'] = DEMAND['ItemNumber'].isin(BREAKOUT['Finished good'].values)
     NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber', 'WorkOrderNumber', 'Demand quantity (pounds)']].assign(Cause = 'Finished good not in breakout', ComponentFormula = 0).rename({'ItemNumber': 'ItemNumber FG', 'Demand quantity (pounds)': 'Rejected Pounds', 'ComponentFormula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1)
-    NOT_IN_BREAKOUT = NOT_IN_BREAKOUT[['Work Order', 'ItemNumber FG', 'ItemNumber INT', 'Rejected Pounds', 'Cause']]
+    NOT_IN_BREAKOUT = NOT_IN_BREAKOUT[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
     DEMAND = DEMAND.query('in_breakout == True')
     #Keep only FG whose every CF has extrusion rate (TODO or is a buyable)
     CFS_IN_DEMAND = DEMAND[['ItemNumber', 'Demand quantity (pounds)', 'WorkOrderNumber']].merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
@@ -730,7 +730,7 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     NOT_IN_EXTRUDERS['Rejected Pounds'] = NOT_IN_EXTRUDERS['Demand quantity (pounds)'].astype(float) * NOT_IN_EXTRUDERS['Blend percentage'].astype(float)
     NOT_IN_EXTRUDERS['Cause'] = 'At least one component has no extrusion rate'
     NOT_IN_EXTRUDERS.rename({'Finished good': 'ItemNumber FG', 'Component formula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1, inplace = True)
-    NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS[['Work Order', 'ItemNumber FG', 'ItemNumber INT', 'Rejected Pounds', 'Cause']]
+    NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
     DEMAND = DEMAND.merge(CFS_IN_DEMAND[['Finished good', 'in_extruders']].groupby('Finished good').all().query('in_extruders == True'), left_on = 'ItemNumber', right_on = 'Finished good', how = 'inner').drop('in_extruders', axis = 1)
     #Bring Model plant column
     DEMAND = DEMAND.merge(Model_WorkCenters[['WorkCenter', 'Model plant']], on = 'WorkCenter', how = 'left')
@@ -741,7 +741,7 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     NOT_IN_PACKLINES['Rejected Pounds'] = NOT_IN_PACKLINES['Demand quantity (pounds)'].astype(float) * NOT_IN_PACKLINES['Blend percentage'].astype(float)
     NOT_IN_PACKLINES.rename({'WorkOrderNumber': 'Work Order', 'Finished good': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
     NOT_IN_PACKLINES['Cause'] = 'Finished good has no packing rate'
-    NOT_IN_PACKLINES = NOT_IN_PACKLINES[['Work Order', 'ItemNumber FG', 'ItemNumber INT', 'Rejected Pounds', 'Cause']]
+    NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
     DEMAND = DEMAND.query('in_packlines == True').copy()
     #TODO traer el Customer cuando lo manden los de Alphia
     DEMAND['Customer'] = 0
@@ -766,8 +766,8 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
                      'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
 
     ERROR_DEMAND = pd.concat([NOT_IN_BREAKOUT, NOT_IN_EXTRUDERS, NOT_IN_PACKLINES], ignore_index = True)
+    ERROR_DEMAND['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
     ERROR_DEMAND['Run'] = 1
-    ERROR_DEMAND['Process date'] = datetime.date.today().strftime("%Y-%m-%d")
 
     CUSTOMER_PRIORITY = pd.DataFrame(data = DEMAND['Customer'].unique(), columns = ['Customer'])
     CUSTOMER_PRIORITY['Priority'] = 0
@@ -894,12 +894,12 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
                 print('Failed to upload Demand table to HANA: ' + str(e))
             try:
                 #TODO upload ERROR_DEMAND to HANA
-                connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
+                connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
                 ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
-                error_demand_pt.model.df = ERROR_DEMAND
-                error_demand_pt.redraw()
             except Exception as e:
                 print('Failed to upload Error demand table to HANA: ' + str(e))
+            error_demand_pt.model.df = ERROR_DEMAND
+            error_demand_pt.redraw()
             try:
                 customer_priority_pt.model.df = CUSTOMER_PRIORITY
                 customer_priority_pt.redraw()
@@ -1089,6 +1089,7 @@ if __name__ == '__main__':
     show_tables_notebook.add(error_demand_frame, text = 'Error demand')
     error_demand_pt = pandastable.Table(error_demand_frame, dataframe = pd.DataFrame())
     error_demand_pt.show()
+
 
     window.mainloop()
 
