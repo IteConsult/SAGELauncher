@@ -758,7 +758,7 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     #TODO traer el original due date cuando lo manden los de Alphia
     DEMAND['Original due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
     #TODO corregir process date?
-    DEMAND['Process date'] = 'week ' + str(datetime.date.today().isocalendar()[1] + 3)
+    DEMAND['Process date'] = datetime.date.today().strftime("%Y-%m-%d")
     DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location', 'WorkCenter': 'Packline', 
                    'WorkOrderNumber': 'Work order'}, axis = 1, inplace = True)
     DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Formula', 'Inventory', 'Priority product', 'Priority', 'Raw material date', 
