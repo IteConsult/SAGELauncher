@@ -766,6 +766,8 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
                      'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
 
     ERROR_DEMAND = pd.concat([NOT_IN_BREAKOUT, NOT_IN_EXTRUDERS, NOT_IN_PACKLINES], ignore_index = True)
+    ERROR_DEMAND['Run'] = 1
+    ERROR_DEMAND['Process date'] = datetime.date.today().strftime("%Y-%m-%d")
 
     CUSTOMER_PRIORITY = pd.DataFrame(data = DEMAND['Customer'].unique(), columns = ['Customer'])
     CUSTOMER_PRIORITY['Priority'] = 0
@@ -873,7 +875,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
                 print('Failed to upload Extruders table to HANA: ' + str(e))
     #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
     try:
-        DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS)
+        DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS)
         print('Demand table succesfully generated.')
     except Exception as e:
         print('Failed to generate Demand table: ' + str(e))
@@ -892,16 +894,18 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
                 print('Failed to upload Demand table to HANA: ' + str(e))
             try:
                 #TODO upload ERROR_DEMAND to HANA
+                connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
+                ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
                 error_demand_pt.model.df = ERROR_DEMAND
                 error_demand_pt.redraw()
-            except:
-                print('Couldn\'t display Error demand table.')
+            except Exception as e:
+                print('Failed to upload Error demand table to HANA: ' + str(e))
             try:
                 customer_priority_pt.model.df = CUSTOMER_PRIORITY
                 customer_priority_pt.redraw()
             except:
                 print('Couldn\'t display Customer priority table.')
-                
+
     #4) Inventory bulk (must be created after Demand in order to validate)
     try:
         INVENTORY_BULK = generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, DEMAND, BREAKOUT)
@@ -1085,8 +1089,6 @@ if __name__ == '__main__':
     show_tables_notebook.add(error_demand_frame, text = 'Error demand')
     error_demand_pt = pandastable.Table(error_demand_frame, dataframe = pd.DataFrame())
     error_demand_pt.show()
-    
-    
 
     window.mainloop()
 
