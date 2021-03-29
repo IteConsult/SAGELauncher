@@ -972,7 +972,7 @@ def update_db_from_SAGE():
         except Exception as e:
             print('Couldn\'t read table {table} from HANA. ' + str(e))
 
-    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
+    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, to_excel)
 
 def generate_model_files_from_backup(from_excel = False, to_excel = False): #TODO cambiar la lógica: en vez de leer las tablas de HANA, que lea las tablas locales (editadas con pandastable)
 
