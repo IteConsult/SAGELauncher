@@ -928,7 +928,8 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             except Exception as e:
                 print('Failed to upload Bulk inventory table to HANA: ' + str(e))
 
-def update_db_from_SAGE():
+
+def update_db_from_SAGE(to_excel = False):
     
     #Connect to HANA
     try:
