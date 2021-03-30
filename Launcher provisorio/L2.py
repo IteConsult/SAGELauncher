@@ -710,14 +710,10 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
     #Filter only FG items
     DEMAND = DEMAND.query('CategoryCode == "FG"').copy()
-    #Calculate demand in pounds
+    #Calculate demand in pounds and keep those with positive demand
     DEMAND = DEMAND.astype({'PlannedQty': float, 'CompletedQty': float, 'ItemWeight': float})
-    
-    #TODO provisorio -------
-    #DEMAND['Demand quantity (pounds)'] = (DEMAND['PlannedQty'] - DEMAND['CompletedQty'])*DEMAND['ItemWeight']
-    DEMAND['Demand quantity (pounds)'] = DEMAND['PlannedQty']*DEMAND['ItemWeight']
-    #FIN TODO provisorio ----------
-    
+    DEMAND['Demand quantity (pounds)'] = (DEMAND['PlannedQty'] - DEMAND['CompletedQty'])*DEMAND['ItemWeight']
+    DEMAND = DEMAND[DEMAND['Demand quantity (pounds)'] > 0]
     #Filter items not in Brekaout
     DEMAND['in_breakout'] = DEMAND['ItemNumber'].isin(BREAKOUT['Finished good'].values)
     NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber', 'WorkOrderNumber', 'Demand quantity (pounds)']].assign(Cause = 'Finished good not in breakout', ComponentFormula = 0).rename({'ItemNumber': 'ItemNumber FG', 'Demand quantity (pounds)': 'Rejected Pounds', 'ComponentFormula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1)
@@ -1047,52 +1043,59 @@ def save_outputs_command():
     save_outputs_pgb.stop()
 
 if __name__ == '__main__':
-    window = tk.Tk()
-    window.title('Alphia Launcher')
-    #window.state("zoomed")
+    root = tk.Tk()
+    root.title('Alphia Launcher')
+    root.configure(bg = 'white')
+    #root.state("zoomed")
+    #root.resizable(height = False, width = False)
 
-    buttons_frame = tk.Frame(window, height='1500')
-    buttons_frame.grid(row = 0, column = 0)
+    buttons_frame = tk.Frame(root, relief = tk.RAISED, bd = 4)
+    buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10)
+    
+    tables_separator = ttk.Separator(root, orient = 'vertical')
+    tables_separator.pack(side = tk.LEFT, fill = tk.Y)
 
     update_db_from_SAGE_btn = tk.Button(buttons_frame, text = 'Update database and model files from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
-    update_db_from_SAGE_btn.grid(row = 1, pady = 10)
+    update_db_from_SAGE_btn.grid(row = 0, pady = 10)
 
     update_db_from_SAGE_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
-    update_db_from_SAGE_pgb.grid(row = 2, pady = 10)
+    update_db_from_SAGE_pgb.grid(row = 1, pady = 10)
 
     generate_model_files_from_backup_btn = tk.Button(buttons_frame, text = 'Generate new model files from HANA backup', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
-    generate_model_files_from_backup_btn.grid(row = 3, padx = 10, pady = 10)
+    generate_model_files_from_backup_btn.grid(row = 2, padx = 10, pady = 10)
 
     generate_model_files_from_backup_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
-    generate_model_files_from_backup_pgb.grid(row = 4, padx = 10, pady = 10)
+    generate_model_files_from_backup_pgb.grid(row = 3, padx = 10, pady = 10)
 
     run_simulation_btn = tk.Button(buttons_frame, text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
-    run_simulation_btn.grid(row = 5, padx = 10, pady = 10)
+    run_simulation_btn.grid(row = 4, padx = 10, pady = 10)
 
     run_optimization_btn = tk.Button(buttons_frame, text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
-    run_optimization_btn.grid(row = 6, padx = 10, pady = 10)
+    run_optimization_btn.grid(row = 5, padx = 10, pady = 10)
 
     save_outputs_btn = tk.Button(buttons_frame, text = 'Save outputs', command = lambda: threading.Thread(target = save_outputs_command, daemon = True).start())
-    save_outputs_btn.grid(row = 7, padx = 10, pady = 10)
+    save_outputs_btn.grid(row = 6, padx = 10, pady = 10)
 
     save_outputs_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
-    save_outputs_pgb.grid(row = 8, padx = 10, pady = 10)
+    save_outputs_pgb.grid(row = 7, padx = 10, pady = 10)
     
-    show_tables_notebook = ttk.Notebook(window)
-    show_tables_notebook.grid(row = 0, column = 1, padx = 10, pady = 10, sticky = 'nwes')
+    show_tables_frame = tk.Frame(root, bg = 'white')
+    show_tables_frame.pack(side = tk.LEFT, expand = True, fill = tk.BOTH)
+    
+    show_tables_notebook = ttk.Notebook(show_tables_frame)
+    show_tables_notebook.pack(side = tk.LEFT, expand = True, fill = tk.BOTH, padx = 10, pady = 10)
     
     customer_priority_frame = tk.Frame()
     show_tables_notebook.add(customer_priority_frame, text = 'Customer priority')
     customer_priority_pt = pandastable.Table(customer_priority_frame, dataframe = pd.DataFrame())
     customer_priority_pt.show()
-    
+
     error_demand_frame = tk.Frame()
     show_tables_notebook.add(error_demand_frame, text = 'Error demand')
     error_demand_pt = pandastable.Table(error_demand_frame, dataframe = pd.DataFrame())
     error_demand_pt.show()
 
-
-    window.mainloop()
+    root.mainloop()
 
 if connection_to_HANA:
     connection_to_HANA.close()
