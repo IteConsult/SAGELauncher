@@ -71,7 +71,7 @@ def extruders(schedule_bulk):
     extruders = extruders.fillna('0')
 
     #insert process date, categorycode
-    extruders['Process Date'] = week()
+    extruders['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
     extruders['CategoryCode'] = "INT"
     
     #change data types to int
@@ -116,7 +116,7 @@ def inventory(bulk_inventory, extruders_df):
                                     inplace = True)
     
     #process date y run
-    bulk_inventory_copy['Process Date'] = week()
+    bulk_inventory_copy['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
     bulk_inventory_copy['Run'] = extruders_df.loc[0,"Run"]
     
     bulk_inventory_copy['Facility'] = bulk_inventory_copy['Facility Code'].map({
@@ -205,7 +205,7 @@ def packlines(schedule_sku, extruders_df):
     packlines = packlines.round(1)
     
     #insert version, entity, process date, CategoryCode
-    packlines["Process Date"] = week()
+    packlines["Process Date"] = datetime.date.today().strftime("%Y-%m-%d")
     packlines['CategoryCode'] = "FG"
 
     #keep only dates of timestamp
@@ -236,7 +236,7 @@ def unpacked(out_due_date_backlog, extruders_df):
     out_due_date_backlog_copy.fillna('0', inplace=True)
     
     #insert version, date, week, run
-    out_due_date_backlog_copy['Process Date'] = week()
+    out_due_date_backlog_copy['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
     out_due_date_backlog_copy['run'] = extruders_df.loc[0,"Run"]
     
     #rename
@@ -340,7 +340,7 @@ def wo_demand(itemmaster,workorders, extruders_df):
     
     #run and process date
     merge['Run'] = extruders_df.loc[0,"Run"]
-    merge['Process Date'] = week()
+    merge['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
     
     #keep only dates
     merge["PlannedStart"] = merge["PlannedStart"].str.split("T", n = 1, expand = True)[0]
@@ -988,8 +988,17 @@ def generate_model_files_from_backup_command():
     generate_model_files_from_backup_thread = threading.Thread(target = generate_model_files_from_backup, daemon = True)
     generate_model_files_from_backup_thread.start()
     #generate_model_files_from_backup_pgb.start()
-    
+    loading_window = tk.Toplevel(root)
+    loading_window.resizable(height = False, width = False)
+    loading_window.grab_set()
+    loading_frame = ttk.Frame(loading_window)
+    loading_frame.pack()
+    loading_label = ttk.Label(loading_frame, text = 'Loading...')
+    loading_label.pack(pady = 10)
+    cancel_btn = ttk.Button(loading_frame, text = 'Cancel', command = generate_model_files_from_backup_thread.stop)
+    cancel_btn.pack()
     generate_model_files_from_backup_thread.join()
+    loading_window.destroy()
     #generate_model_files_from_backup_pgb.stop()
 
 def run_experiment(experiment):
