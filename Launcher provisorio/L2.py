@@ -653,7 +653,7 @@ def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCent
     RATES = RATES.query('UseStatus == "2"')
     #Bring data about workcenters and keep only workcenters incorporated into the model
     RATES = RATES.merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'inner')
-    RATES['Isolate'] = RATES['Isolate'].map({'True': 0, 'False': 1})
+    RATES['Isolate'] = RATES['Isolate'].map({'True': 1, 'False': 0})
     #Keep only those which are either packlines or extruders
     RATES = RATES.query('Area == "PACK" or Area == "EXTR"')
     #Merging with ItemMaster
