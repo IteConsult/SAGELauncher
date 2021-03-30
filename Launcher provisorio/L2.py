@@ -653,7 +653,7 @@ def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCent
     RATES = RATES.query('UseStatus == "2"')
     #Bring data about workcenters and keep only workcenters incorporated into the model
     RATES = RATES.merge(Model_WorkCenters[['WorkCenter', 'Model Workcenter', 'Model plant', 'Area', 'Isolate']], on = 'WorkCenter', how = 'inner')
-    #RATES['Isolate'] = RATES['Isolate'].map({'True': True, 'False': False})
+    RATES['Isolate'] = RATES['Isolate'].map({'True': 0, 'False': 1})
     #Keep only those which are either packlines or extruders
     RATES = RATES.query('Area == "PACK" or Area == "EXTR"')
     #Merging with ItemMaster
@@ -811,7 +811,7 @@ def generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, 
     
     return INVENTORY_BULK
     
-def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, to_excel):
+def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good):
 
     #Model files generation and uploading
 
@@ -822,20 +822,14 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     except Exception as e:
         print('Failed to generate Breakout table: ' + str(e))
     else:
-        if to_excel:
-            try:
-                BREAKOUT.to_excel('Breakout_file.xlsx', index = False)
-                print('Breakout table succesfully saved to Excel.')
-            except Exception as e:
-                print('Couldn\'t save Breakout table to Excel: ' + str(e))
-        else:
-            try:
-                connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."BREAKOUT_FILE"')
-                #BREAKOUT.to_excel('Breakout_file.xlsx', index = False)
-                BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
-                print('Breakout table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Breakout table to HANA: ' + str(e))
+        try:
+            connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."BREAKOUT_FILE"')
+            #BREAKOUT.to_excel('Breakout_file.xlsx', index = False)
+            BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
+            print('Breakout table succesfully uploaded to HANA.')
+        except Exception as e:
+            print('Failed to upload Breakout table to HANA: ' + str(e))
+                
     #2) Packlines and extruders
     try:
         PACKLINES, EXTRUDERS = generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility, Finished_Good)
@@ -843,32 +837,21 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     except Exception as e:
         print('Failed to generate Packlines and Extruders tables: ' + str(e))
     else:
-        if to_excel:
-            try:
-                PACKLINES.to_excel('Packlines.xlsx', index = False)
-                print('Packlines table sucessfully saved to Excel.')
-            except Exception as e:
-                print('Couldn\'t save Packlines table to Excel" ' + str(e))
-            try:
-                EXTRUDERS.to_excel('Extruders.xlsx', index = False)
-                print('Extruders table succesfully saved to Excel.')
-            except Exception as e:
-                print('Couldn\'t save Extruders table to Excel: ', + str(e))
-        else:
-            try:
-                connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."PACKLINES"')
-                #PACKLINES.to_excel('Packlines.xlsx', index = False)
-                PACKLINES.to_sql('packlines', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
-                print('Packlines table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Packlines table to HANA: ' + str(e))
-            try:
-                connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
-                #EXTRUDERS.to_excel('Extruders.xlsx', index = False)
-                EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = connection_to_HANA, if_exists ='append', index = False)
-                print('Extruders table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Extruders table to HANA: ' + str(e))
+        try:
+            connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."PACKLINES"')
+            #PACKLINES.to_excel('Packlines.xlsx', index = False)
+            PACKLINES.to_sql('packlines', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
+            print('Packlines table succesfully uploaded to HANA.')
+        except Exception as e:
+            print('Failed to upload Packlines table to HANA: ' + str(e))
+        try:
+            connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
+            #EXTRUDERS.to_excel('Extruders.xlsx', index = False)
+            EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = connection_to_HANA, if_exists ='append', index = False)
+            print('Extruders table succesfully uploaded to HANA.')
+        except Exception as e:
+            print('Failed to upload Extruders table to HANA: ' + str(e))
+
     #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
     try:
         DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS)
@@ -876,31 +859,25 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     except Exception as e:
         print('Failed to generate Demand table: ' + str(e))
     else:
-        if to_excel:
-            DEMAND.to_excel('Demand.xlsx', index = False)
-            print('Demand table succesfully saved to Excel.')
-            ERROR_DEMAND.to_excel('Error_Demand.xlsx', index = False)
-            print('Error demand table sucessfully saved to Excel.', index = False)
-        else:
-            try:
-                connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
-                DEMAND.to_sql('demand', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
-                print('Demand table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Demand table to HANA: ' + str(e))
-            try:
-                #TODO upload ERROR_DEMAND to HANA
-                connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
-                ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
-            except Exception as e:
-                print('Failed to upload Error demand table to HANA: ' + str(e))
-            error_demand_pt.model.df = ERROR_DEMAND
-            error_demand_pt.redraw()
-            try:
-                customer_priority_pt.model.df = CUSTOMER_PRIORITY
-                customer_priority_pt.redraw()
-            except:
-                print('Couldn\'t display Customer priority table.')
+        try:
+            connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
+            DEMAND.to_sql('demand', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
+            print('Demand table succesfully uploaded to HANA.')
+        except Exception as e:
+            print('Failed to upload Demand table to HANA: ' + str(e))
+        try:
+            #TODO upload ERROR_DEMAND to HANA
+            connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
+            ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
+        except Exception as e:
+            print('Failed to upload Error demand table to HANA: ' + str(e))
+        error_demand_pt.model.df = ERROR_DEMAND
+        error_demand_pt.redraw()
+        try:
+            customer_priority_pt.model.df = CUSTOMER_PRIORITY
+            customer_priority_pt.redraw()
+        except:
+            print('Couldn\'t display Customer priority table.')
 
     #4) Inventory bulk (must be created after Demand in order to validate)
     try:
@@ -909,23 +886,17 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     except Exception as e:
         print('Failed to generate Inventory bulk table: ' + str(e))
     else:
-        if to_excel:
-            try:
-                INVENTORY_BULK.to_excel('Bulk_Inventory.xlsx', index = False)
-                print('Bulk inventory table succesfully saved to Excel.')
-            except Exception as e:
-                print('Couldn\'t save Bulk inventory table to Excel.')
-        else:
-            try:
-                connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."BULK_INVENTORY"')
-                #INVENTORY_BULK.to_excel('Inventory_bulk.xlsx', index = False)
-                INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
-                print('Bulk inventory table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Bulk inventory table to HANA: ' + str(e))
+        try:
+            connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."BULK_INVENTORY"')
+            #INVENTORY_BULK.to_excel('Inventory_bulk.xlsx', index = False)
+            INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
+            print('Bulk inventory table succesfully uploaded to HANA.')
+        except Exception as e:
+            print('Failed to upload Bulk inventory table to HANA: ' + str(e))
 
 
-def update_db_from_SAGE(to_excel = False):
+def update_db_from_SAGE():
+    print('update_db_from_SAGE function called.')
     
     #Connect to HANA
     try:
@@ -964,74 +935,63 @@ def update_db_from_SAGE(to_excel = False):
 
     for table in manual_files:
         try:
-            globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA)
+            globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
             print(f'Table {table} succesfully read from HANA.')
         except Exception as e:
             print('Couldn\'t read table {table} from HANA. ' + str(e))
 
-    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, to_excel)
+    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
+    
+    print('generate_model_files_from_backup function finished.')
 
-def generate_model_files_from_backup(from_excel = False, to_excel = False): #TODO cambiar la lógica: en vez de leer las tablas de HANA, que lea las tablas locales (editadas con pandastable)
+def generate_model_files_from_backup():
+    print('generate_model_files_from_backup function called.')
 
     #Connect to HANA
-    if not from_excel:
-        try:
-            connectToHANA()
-        except:
-            print('Couldn\'t connect to database!') #TODO add warning message
+    try:
+        connectToHANA()
+    except:
+        print('Couldn\'t connect to database!') #TODO add warning message
 
     tables = ['BOM', 'Inventory', 'Facility', 'ItemMaster', 'RoutingAndRates', 'WorkCenters', 'WorkOrders']
 
     #Read SAGE tables from HANA
-    if from_excel:
-        for table in tables:
-            try:
-                globals()[table] = pd.read_excel(f'{table}.xlsx').astype(str)
-                print(f'Table {table} sucessfully read from Excel.')
-            except:
-                print(f'Couldn\'t read {table} from Excel.' + str(e))
-    else:
-        for table in tables:
-            try:
-                globals()[table] = pd.read_sql_table(table.lower(), schema = 'sage', con = connection_to_HANA).astype(str)
-                print(f'Table {table} succesfully read from HANA.')
-            except Exception as e:
-                print(f'Couldn\'t read table {table} from HANA. ' + str(e))
+    for table in tables:
+        try:
+            globals()[table] = pd.read_sql_table(table.lower(), schema = 'sage', con = connection_to_HANA).astype(str)
+            print(f'Table {table} succesfully read from HANA.')
+        except Exception as e:
+            print(f'Couldn\'t read table {table} from HANA. ' + str(e))
 
     #Read manual files from HANA
     manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good']
     
-    if from_excel:
-        for table in manual_files:
-            try:
-                globals()[table] = pd.read_excel(f'{table}.xlsx').astype(str)
-                print(f'Table {table} sucesfully read from Excel.')
-            except:
-                print(f'Couldn\'t read {table} from Excel.' + str(e))
-    else:
-        for table in manual_files:
-            try:
-                globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
-                print(f'Table {table} succesfully read from HANA.')
-            except Exception as e:
-                print(f'Couldn\'t read table {table} from HANA. ' + str(e))
+    for table in manual_files:
+        try:
+            globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
+            print(f'Table {table} sucesfully read from HANA.')
+        except:
+            print(f'Couldn\'t read {table} from HANA.' + str(e))
 
-    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, to_excel)
+    generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
+    
+    print('generate_model_files_from_backup function finished.')
 
 def update_db_from_SAGE_command():
     update_db_from_SAGE_thread = threading.Thread(target = update_db_from_SAGE, daemon = True)
     update_db_from_SAGE_thread.start()
-    update_db_from_SAGE_pgb.start()
+    #update_db_from_SAGE_pgb.start()
     update_db_from_SAGE_thread.join()
-    update_db_from_SAGE_pgb.stop()
+    #update_db_from_SAGE_pgb.stop()
 
 def generate_model_files_from_backup_command():
     generate_model_files_from_backup_thread = threading.Thread(target = generate_model_files_from_backup, daemon = True)
     generate_model_files_from_backup_thread.start()
-    generate_model_files_from_backup_pgb.start()
+    #generate_model_files_from_backup_pgb.start()
+    
     generate_model_files_from_backup_thread.join()
-    generate_model_files_from_backup_pgb.stop()
-        
+    #generate_model_files_from_backup_pgb.stop()
+
 def run_experiment(experiment):
     subprocess.run(f'Model\CJFoods_windows-{experiment}.bat')
 
@@ -1045,52 +1005,70 @@ def save_outputs_command():
 if __name__ == '__main__':
     root = tk.Tk()
     root.title('Alphia Launcher')
-    root.configure(bg = 'white')
+    #root.configure(bg = 'white')
+    s = ttk.Style()
     #root.state("zoomed")
     #root.resizable(height = False, width = False)
 
-    buttons_frame = tk.Frame(root, relief = tk.RAISED, bd = 4)
-    buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10)
-    
+    buttons_frame = ttk.Frame(root)
+    buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10, fill = tk.Y)
+
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
 
-    update_db_from_SAGE_btn = tk.Button(buttons_frame, text = 'Update database and model files from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
-    update_db_from_SAGE_btn.grid(row = 0, pady = 10)
+    read_data_lf = ttk.LabelFrame(buttons_frame, text = 'Select data source')
+    read_data_lf.pack(fill = tk.X, ipadx = 10, ipady = 5, padx = 10, pady = 10)
+    
+    source = tk.StringVar()
+    
+    update_db_from_SAGE_rb = ttk.Radiobutton(read_data_lf, text = 'Read from SAGE', variable = source, value = 'update_db_from_SAGE_command')
+    update_db_from_SAGE_rb.pack(padx = 10, pady = 5, anchor = 'w')
+    
+    generate_model_files_from_backup_rb = ttk.Radiobutton(read_data_lf, text = 'Read from HANA backup', variable = source, value = 'generate_model_files_from_backup_command')
+    generate_model_files_from_backup_rb.pack(padx = 10, pady = 5, anchor = 'w')
+    
+    generate_model_files_btn = ttk.Button(read_data_lf, text = 'Read data', command = lambda: threading.Thread(target = eval(source.get()), daemon = True).start())
+    generate_model_files_btn.pack(padx = 15, pady = 10, anchor = 'e')
 
-    update_db_from_SAGE_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
-    update_db_from_SAGE_pgb.grid(row = 1, pady = 10)
+    # update_db_from_SAGE_btn = tk.Button(read_data_lf, text = 'Read from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
+    # update_db_from_SAGE_btn.pack(fill = tk.X, padx = 10, pady = 10)
 
-    generate_model_files_from_backup_btn = tk.Button(buttons_frame, text = 'Generate new model files from HANA backup', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
-    generate_model_files_from_backup_btn.grid(row = 2, padx = 10, pady = 10)
+    # update_db_from_SAGE_pgb = ttk.Progressbar(read_data_lf, mode = 'indeterminate')
+    # update_db_from_SAGE_pgb.pack(padx = 10, pady = 10)
 
-    generate_model_files_from_backup_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
-    generate_model_files_from_backup_pgb.grid(row = 3, padx = 10, pady = 10)
+    # generate_model_files_from_backup_btn = tk.Button(read_data_lf, text = 'Read from HANA backup', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
+    # generate_model_files_from_backup_btn.pack(padx = 10, pady = 10)
 
-    run_simulation_btn = tk.Button(buttons_frame, text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
-    run_simulation_btn.grid(row = 4, padx = 10, pady = 10)
+    # generate_model_files_from_backup_pgb = ttk.Progressbar(read_data_lf, mode = 'indeterminate')
+    # generate_model_files_from_backup_pgb.pack(padx = 10, pady = 10)
 
-    run_optimization_btn = tk.Button(buttons_frame, text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
-    run_optimization_btn.grid(row = 5, padx = 10, pady = 10)
+    run_model_lf = ttk.LabelFrame(buttons_frame, text = 'Select experiment')
+    run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
+
+    run_simulation_btn = tk.Button(run_model_lf, text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
+    run_simulation_btn.pack(padx = 10, pady = 10)
+
+    run_optimization_btn = tk.Button(run_model_lf, text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
+    run_optimization_btn.pack(padx = 10, pady = 10)
 
     save_outputs_btn = tk.Button(buttons_frame, text = 'Save outputs', command = lambda: threading.Thread(target = save_outputs_command, daemon = True).start())
-    save_outputs_btn.grid(row = 6, padx = 10, pady = 10)
+    save_outputs_btn.pack(padx = 10, pady = 10)
 
     save_outputs_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
-    save_outputs_pgb.grid(row = 7, padx = 10, pady = 10)
-    
-    show_tables_frame = tk.Frame(root, bg = 'white')
+    save_outputs_pgb.pack(padx = 10, pady = 10)
+
+    show_tables_frame = ttk.Frame(root)
     show_tables_frame.pack(side = tk.LEFT, expand = True, fill = tk.BOTH)
-    
+
     show_tables_notebook = ttk.Notebook(show_tables_frame)
     show_tables_notebook.pack(side = tk.LEFT, expand = True, fill = tk.BOTH, padx = 10, pady = 10)
-    
-    customer_priority_frame = tk.Frame()
+
+    customer_priority_frame = ttk.Frame()
     show_tables_notebook.add(customer_priority_frame, text = 'Customer priority')
     customer_priority_pt = pandastable.Table(customer_priority_frame, dataframe = pd.DataFrame())
     customer_priority_pt.show()
 
-    error_demand_frame = tk.Frame()
+    error_demand_frame = ttk.Frame()
     show_tables_notebook.add(error_demand_frame, text = 'Error demand')
     error_demand_pt = pandastable.Table(error_demand_frame, dataframe = pd.DataFrame())
     error_demand_pt.show()
