@@ -3,7 +3,7 @@
 block_cipher = None
 
 
-a = Analysis(['L2.py'],
+a = Analysis(['SAVE_Outputs.py'],
              pathex=['C:\\Users\\admin\\Documents\\GitHub\\SAGELauncher\\Launcher provisorio'],
              binaries=[],
              datas=[],
@@ -23,7 +23,7 @@ exe = EXE(pyz,
           a.zipfiles,
           a.datas,
           [],
-          name='L2',
+          name='SAVE_Outputs',
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,

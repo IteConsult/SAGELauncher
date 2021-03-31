@@ -1,6 +1,10 @@
 import pandas as pd
 import sqlalchemy
+import sqlalchemy_hana
+import sqlalchemy_hana.dialect
 import datetime
+
+sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
 def connectToHANA():
     try:
@@ -8,7 +12,6 @@ def connectToHANA():
         print('Connection established.')
     except Exception as e:
         print('Connection failed! ' + str(e))
-        raise Exception
         
     return connection_to_HANA
 
@@ -553,3 +556,6 @@ def upload_output_to_hana():
 
             #print problems
             print(table.name +' failed to upload! ' + str(e))
+
+if __name__ == '__main__':
+    upload_output_to_hana()

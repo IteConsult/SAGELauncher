@@ -15,7 +15,8 @@ import datetime
 import numpy as np
 import pandastable
 
-connection_to_HANA = None
+#This line prevents the bundled .exe from throwing a sqlalchemy related error
+sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
 #----
 
@@ -572,8 +573,7 @@ def upload_output_to_hana():
 
 #-----
 
-
-
+connection_to_HANA = None
 
 def connectToHANA():
     global connection_to_HANA
@@ -583,7 +583,6 @@ def connectToHANA():
             print('Connection established.')
         except Exception as e:
             print('Connection failed! ' + str(e))
-            raise Exception
 
 def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good):
     #Merging with ItemMaster
@@ -627,7 +626,7 @@ def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Goo
     #JDE = pd.read_csv('MD_Bulk_Code.csv')
     BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'LegacyCJFCode']].groupby('ItemNumber').first(), left_on = 'Component formula', right_on = 'ItemNumber', how = 'left')
     BREAKOUT = BREAKOUT.merge(MD_Bulk_Code[['id', 'Type']], left_on = 'LegacyCJFCode', right_on = 'id', how = 'left')
-    BREAKOUT['Category'] = BREAKOUT['Type'].copy().fillna('0')
+    BREAKOUT['Category'] = BREAKOUT['Type'].copy().fillna('0').apply(lambda x: x.upper())
     BREAKOUT['Type-Shape-Size Concat'] = BREAKOUT['Type'].copy()
     
     #TODO provisorio ----
@@ -770,8 +769,11 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
 
     PRODUCT_PRIORITY = pd.DataFrame(data = DEMAND['Finished good'].unique(), columns = ['Finished good'])
     PRODUCT_PRIORITY['Priority'] = 0
+    
+    FAMILIES = pd.DataFrame(data = DEMAND['Finished good'].unique(), columns = ['Finished good'])
+    FAMILIES['Family sequence'] = 0
 
-    return DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY
+    return DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY, FAMILIES
 
 def generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, DEMAND, BREAKOUT):
     #TODO hay que repensarla cuando arreglen lo de la Facility en el ItemMaster
@@ -854,7 +856,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
 
     #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
     try:
-        DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS)
+        DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY, FAMILIES = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS)
         print('Demand table succesfully generated.')
     except Exception as e:
         print('Failed to generate Demand table: ' + str(e))
@@ -871,13 +873,6 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
         except Exception as e:
             print('Failed to upload Error demand table to HANA: ' + str(e))
-        error_demand_pt.model.df = ERROR_DEMAND
-        error_demand_pt.redraw()
-        try:
-            customer_priority_pt.model.df = CUSTOMER_PRIORITY
-            customer_priority_pt.redraw()
-        except:
-            print('Couldn\'t display Customer priority table.')
 
     #4) Inventory bulk (must be created after Demand in order to validate)
     try:
@@ -903,6 +898,7 @@ def update_db_from_SAGE():
         connectToHANA()
     except:
         print('Couldn\'t connect to database!') #TODO add warning message
+        return
 
     table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
               'Inventory': r'http://10.4.240.65/api/IntegrationAPI/GetInventory',
@@ -952,6 +948,7 @@ def generate_model_files_from_backup():
         connectToHANA()
     except:
         print('Couldn\'t connect to database!') #TODO add warning message
+        return
 
     tables = ['BOM', 'Inventory', 'Facility', 'ItemMaster', 'RoutingAndRates', 'WorkCenters', 'WorkOrders']
 
@@ -995,7 +992,7 @@ def generate_model_files_from_backup_command():
     loading_frame.pack()
     loading_label = ttk.Label(loading_frame, text = 'Loading...')
     loading_label.pack(pady = 10)
-    cancel_btn = ttk.Button(loading_frame, text = 'Cancel', command = generate_model_files_from_backup_thread.stop)
+    cancel_btn = ttk.Button(loading_frame, text = 'Cancel')
     cancel_btn.pack()
     generate_model_files_from_backup_thread.join()
     loading_window.destroy()
@@ -1014,10 +1011,15 @@ def save_outputs_command():
 if __name__ == '__main__':
     root = tk.Tk()
     root.title('Alphia Launcher')
-    #root.configure(bg = 'white')
+    root.configure(bg = 'white')
     s = ttk.Style()
     #root.state("zoomed")
     #root.resizable(height = False, width = False)
+    
+    s = ttk.Style()
+    s.configure('TFrame', background = 'white')
+    s.configure('TLabelframe', background = 'white')
+    s.configure('TLabelframe.Label', background = 'white')
 
     buttons_frame = ttk.Frame(root)
     buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10, fill = tk.Y)
@@ -1025,39 +1027,47 @@ if __name__ == '__main__':
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
 
-    read_data_lf = ttk.LabelFrame(buttons_frame, text = 'Select data source')
+    read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Select data source')
     read_data_lf.pack(fill = tk.X, ipadx = 10, ipady = 5, padx = 10, pady = 10)
     
-    source = tk.StringVar()
+    # source = tk.StringVar()
+    # source.set('update_db_from_SAGE_command')
     
-    update_db_from_SAGE_rb = ttk.Radiobutton(read_data_lf, text = 'Read from SAGE', variable = source, value = 'update_db_from_SAGE_command')
-    update_db_from_SAGE_rb.pack(padx = 10, pady = 5, anchor = 'w')
+    # update_db_from_SAGE_rb = ttk.Radiobutton(read_data_lf, text = 'Read from SAGE', variable = source, value = 'update_db_from_SAGE_command')
+    # update_db_from_SAGE_rb.pack(padx = 10, pady = 5, anchor = 'w')
     
-    generate_model_files_from_backup_rb = ttk.Radiobutton(read_data_lf, text = 'Read from HANA backup', variable = source, value = 'generate_model_files_from_backup_command')
-    generate_model_files_from_backup_rb.pack(padx = 10, pady = 5, anchor = 'w')
+    # generate_model_files_from_backup_rb = ttk.Radiobutton(read_data_lf, text = 'Read from HANA backup', variable = source, value = 'generate_model_files_from_backup_command')
+    # generate_model_files_from_backup_rb.pack(padx = 10, pady = 5, anchor = 'w')
     
-    generate_model_files_btn = ttk.Button(read_data_lf, text = 'Read data', command = lambda: threading.Thread(target = eval(source.get()), daemon = True).start())
-    generate_model_files_btn.pack(padx = 15, pady = 10, anchor = 'e')
+    # generate_model_files_btn = ttk.Button(read_data_lf, text = 'Read data', command = lambda: threading.Thread(target = eval(source.get()), daemon = True).start())
+    # generate_model_files_btn.pack(padx = 15, pady = 10, anchor = 'e')
 
-    # update_db_from_SAGE_btn = tk.Button(read_data_lf, text = 'Read from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
-    # update_db_from_SAGE_btn.pack(fill = tk.X, padx = 10, pady = 10)
+    update_db_from_SAGE_btn = ttk.Button(read_data_lf, text = 'Read from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
+    update_db_from_SAGE_btn.pack(padx = 10, pady = 10)
 
     # update_db_from_SAGE_pgb = ttk.Progressbar(read_data_lf, mode = 'indeterminate')
     # update_db_from_SAGE_pgb.pack(padx = 10, pady = 10)
 
-    # generate_model_files_from_backup_btn = tk.Button(read_data_lf, text = 'Read from HANA backup', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
-    # generate_model_files_from_backup_btn.pack(padx = 10, pady = 10)
+    generate_model_files_from_backup_btn = ttk.Button(read_data_lf, text = 'Read from HANA backup', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
+    generate_model_files_from_backup_btn.pack(padx = 10, pady = 10)
 
     # generate_model_files_from_backup_pgb = ttk.Progressbar(read_data_lf, mode = 'indeterminate')
     # generate_model_files_from_backup_pgb.pack(padx = 10, pady = 10)
 
-    run_model_lf = ttk.LabelFrame(buttons_frame, text = 'Select experiment')
+    manual_input_lf = ttk.LabelFrame(buttons_frame, text = '2. Add manual input (optional)')
+    manual_input_lf.pack(fill = tk.X, padx = 10, pady = 10)
+    
+    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit manual tables')
+    add_manual_input_btn.pack(padx = 10, pady = 10)
+    add_manual_input_btn.state(['disabled'])
+
+    run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select experiment')
     run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
-    run_simulation_btn = tk.Button(run_model_lf, text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
+    run_simulation_btn = ttk.Button(run_model_lf, text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
     run_simulation_btn.pack(padx = 10, pady = 10)
 
-    run_optimization_btn = tk.Button(run_model_lf, text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
+    run_optimization_btn = ttk.Button(run_model_lf, text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
     run_optimization_btn.pack(padx = 10, pady = 10)
 
     save_outputs_btn = tk.Button(buttons_frame, text = 'Save outputs', command = lambda: threading.Thread(target = save_outputs_command, daemon = True).start())
@@ -1072,15 +1082,21 @@ if __name__ == '__main__':
     show_tables_notebook = ttk.Notebook(show_tables_frame)
     show_tables_notebook.pack(side = tk.LEFT, expand = True, fill = tk.BOTH, padx = 10, pady = 10)
 
-    customer_priority_frame = ttk.Frame()
-    show_tables_notebook.add(customer_priority_frame, text = 'Customer priority')
-    customer_priority_pt = pandastable.Table(customer_priority_frame, dataframe = pd.DataFrame())
-    customer_priority_pt.show()
+    manual_tables_frame = ttk.Frame()
+    show_tables_notebook.add(manual_tables_frame, text = '   Manual tables    ')
+    manual_tables_pt = pandastable.Table(manual_tables_frame, dataframe = pd.DataFrame())
+    manual_tables_pt.show()
 
-    error_demand_frame = ttk.Frame()
-    show_tables_notebook.add(error_demand_frame, text = 'Error demand')
-    error_demand_pt = pandastable.Table(error_demand_frame, dataframe = pd.DataFrame())
-    error_demand_pt.show()
+    model_files_frame = ttk.Frame()
+    show_tables_notebook.add(model_files_frame, text = '    Model tables    ')
+    
+    model_files_notebook = ttk.Notebook(model_files_frame)
+    model_files_notebook.pack(expand = True, fill = tk.BOTH, padx = 10, pady = 10)
+    
+    breakout_fm = ttk.Frame()
+    model_files_notebook.add(breakout_fm, text = 'Breakout')
+    breakout_pt = pandastable.Table(breakout_fm, dataframe = pd.DataFrame())
+    breakout_pt.show()
 
     root.mainloop()
 
