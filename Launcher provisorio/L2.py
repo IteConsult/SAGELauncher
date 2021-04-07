@@ -17,10 +17,13 @@ import pandastable
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from webbrowser import open as webopen
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
+#Debug variable
+to_excel = False
 #Global variables
 connection_to_HANA = None
 DEMAND = pd.DataFrame()
@@ -345,8 +348,28 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             print('Failed to upload Bulk inventory table to HANA: ' + str(e))
             return 1
     
-    #display_info(DEMAND)
-    
+    if to_excel:
+        dic = {'BREAKOUT': 'Breakout_file.xlsx',
+            'PACKLINES': 'Packlines.xlsx',
+            'EXTRUDERS': 'Extruders.xlsx'}
+        for table in dic:
+            try:
+                locals()[table].to_excel(dic[table], index = False)
+                print(f'{table} saved to Excel.')
+            except:
+                print('Couldn\'t save table.')
+        EXTRUDERS_SCHEDULE = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
+        try:
+            with pd.ExcelWriter('Demand.xlsx') as writer:
+                DEMAND.to_excel(writer, sheet_name = 'Demand', index = False)
+                INVENTORY_BULK.to_excel(writer, sheet_name = 'Bulk Inventory', index = False)
+                EXTRUDERS_SCHEDULE.to_excel(writer, sheet_name = 'Extruders Schedule', index = False)
+            print('Demand saved to Excel.')
+        except:
+            print('Couldn\'t save to Excel.')
+
+    display_info(DEMAND)
+
     return 0
 
 
@@ -404,7 +427,7 @@ def update_db_from_SAGE():
     
     s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
     
-    print('generate_model_files_from_backup function finished.')
+    print(f'generate_model_files_from_backup function finished with code {s_code}.')
     
     return s_code
 
@@ -442,28 +465,25 @@ def generate_model_files_from_backup():
     
     s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
     
-    print('generate_model_files_from_backup function finished.')
+    print(f'generate_model_files_from_backup function finished with code {s_code}.')
     
     return s_code
     
-# def display_info(DEMAND):
+def display_info(DEMAND):
 
-    # df = DEMAND.copy()
-    # df['Due date'] = pd.to_datetime(df['Due date'])
-    # df = df[['Due date', 'Demand quantity (pounds)', 'Facility']].groupby(['Due date', 'Facility']).sum()
-    # df = df.unstack(fill_value = 0)
-    # df = df.droplevel(0, axis = 1)
-    # df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
-    # df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
-    # df = df[['20001', '20005', '20006', 'Week start']].groupby('Week start').sum() 
+    df = DEMAND.copy()
+    df['Due date'] = pd.to_datetime(df['Due date'])
+    df = df[['Due date', 'Demand quantity (pounds)', 'Facility']].groupby(['Due date', 'Facility']).sum()
+    df = df.unstack(fill_value = 0)
+    df = df.droplevel(0, axis = 1)
+    df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
+    df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
+    df = df.groupby('Week start').sum()
     
-    # fig, ax = plt.subplots()
-    # a = df.cumsum().plot(kind = 'area', ax = ax)
-    # a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
-    # a.set_ylabel('Pounds (in millions)')
-    # canvas = FigureCanvasTkAgg(fig, master = display_info_widget)
-    # canvas.draw()
-    # canvas.get_tk_widget().pack()
+    a = df.cumsum().plot(kind = 'area', ax = ax)
+    a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
+    a.set_ylabel('Pounds (in millions)')
+    fig.canvas.draw_idle()
 
 def update_db_from_SAGE_command():
     # update_db_from_SAGE_thread = threading.Thread(target = update_db_from_SAGE, daemon = True)
@@ -572,6 +592,24 @@ if __name__ == '__main__':
 
     run_optimization_btn = ttk.Button(run_model_lf, text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
     run_optimization_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    
+    sac_buttons_lf = ttk.LabelFrame(buttons_frame, text = '4. View SAC Stories')
+    sac_buttons_lf.pack(fill = tk.X, padx = 10, pady = 10)
+
+    report_catalog_btn = ttk.Button(sac_buttons_lf, text = 'Report catalog', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
+    report_catalog_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2)
+    
+    run_summary_btn = ttk.Button(sac_buttons_lf, text = 'Run summary', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
+    run_summary_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    
+    demand_review_btn = ttk.Button(sac_buttons_lf, text = 'Demand review', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
+    demand_review_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    
+    unassigned_wo_btn = ttk.Button(sac_buttons_lf, text = 'Unassigned WO', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
+    unassigned_wo_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    
+    data_errors_df = ttk.Button(sac_buttons_lf, text = 'Data errors', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
+    data_errors_df.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
 
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
@@ -590,8 +628,16 @@ if __name__ == '__main__':
 
     # save_outputs_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
     # save_outputs_pgb.pack(padx = 10, pady = 10)
-
-
+    
+    # fig, ax = plt.subplots()
+    fig = Figure()
+    ax = fig.add_subplot(111)
+    # a = df.cumsum().plot(kind = 'area', ax = ax)
+    # a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
+    # a.set_ylabel('Pounds (in millions)')
+    canvas = FigureCanvasTkAgg(fig, master = display_info_widget)
+    canvas.draw()
+    canvas.get_tk_widget().pack()
 
     root.mainloop()
 
