@@ -586,30 +586,36 @@ if __name__ == '__main__':
 
     run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select experiment')
     run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
-
-    run_simulation_btn = ttk.Button(run_model_lf, text = 'Run simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
-    run_simulation_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2)
-
-    run_optimization_btn = ttk.Button(run_model_lf, text = 'Run optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
-    run_optimization_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
     
-    sac_buttons_lf = ttk.LabelFrame(buttons_frame, text = '4. View SAC Stories')
+    run_model_frame = ttk.Frame(run_model_lf)
+    run_model_frame.pack()
+
+    run_simulation_btn = ttk.Button(run_model_frame, text = 'Run Simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
+    run_simulation_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
+
+    run_optimization_btn = ttk.Button(run_model_frame, text = 'Run Optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
+    run_optimization_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
+    
+    sac_buttons_lf = ttk.LabelFrame(buttons_frame, text = '4. View Cloud Stories')
     sac_buttons_lf.pack(fill = tk.X, padx = 10, pady = 10)
+    
+    sac_buttons_frame = ttk.Frame(sac_buttons_lf)
+    sac_buttons_frame.pack()
 
-    report_catalog_btn = ttk.Button(sac_buttons_lf, text = 'Report catalog', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
-    report_catalog_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2)
+    report_catalog_btn = ttk.Button(sac_buttons_frame, text = 'Report Catalog', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
+    report_catalog_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
     
-    run_summary_btn = ttk.Button(sac_buttons_lf, text = 'Run summary', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
-    run_summary_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    run_summary_btn = ttk.Button(sac_buttons_frame, text = 'Run Summary', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
+    run_summary_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
     
-    demand_review_btn = ttk.Button(sac_buttons_lf, text = 'Demand review', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
-    demand_review_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    demand_review_btn = ttk.Button(sac_buttons_frame, text = 'Demand Review', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
+    demand_review_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
     
-    unassigned_wo_btn = ttk.Button(sac_buttons_lf, text = 'Unassigned WO', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
-    unassigned_wo_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Unassigned WO', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
+    unassigned_wo_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
     
-    data_errors_df = ttk.Button(sac_buttons_lf, text = 'Data errors', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
-    data_errors_df.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Data Errors', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
+    data_errors_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
