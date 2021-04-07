@@ -35,9 +35,11 @@ def connectToHANA():
     if not connection_to_HANA:
         try:
             connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:HANAtest2908@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
-            print('Connection established.')
+            print('Connection to cloud database established.')
+            return 'Connection succesful.'
         except Exception as e:
             print('Connection failed! ' + str(e))
+            return 'Connection to cloud database failed!'
 
 def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good):
     #Merging with ItemMaster
@@ -347,6 +349,14 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         except Exception as e:
             print('Failed to upload Bulk inventory table to HANA: ' + str(e))
             return 1
+    #5) Save upload time info
+    try:
+        connection_to_HANA.execute('DELETE FROM "SAGE"."LOG"')
+        pd.DataFrame([[pd.to_datetime(datetime.datetime.now()), DEMAND['Demand quantity (pounds)'].sum()]], columns = ['TIME', 'TOTAL_DEMAND']).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
+        print('Update backup time succesfull.')
+    except Exception as e:
+        print('Failed to update backup time: ' + str(e))
+    
     
     if to_excel:
         dic = {'BREAKOUT': 'Breakout_file.xlsx',
@@ -484,6 +494,7 @@ def display_info(DEMAND):
     a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
     a.set_ylabel('Pounds (in millions)')
     fig.canvas.draw_idle()
+    canvas.get_tk_widget().pack()
 
 def update_db_from_SAGE_command():
     # update_db_from_SAGE_thread = threading.Thread(target = update_db_from_SAGE, daemon = True)
@@ -527,6 +538,7 @@ class LoadingWindow(tk.Toplevel):
         global connection_to_HANA
         print('Process interrupted.')
         self.destroy()
+        #TODO find a better way to kill ongoing thread
         connection_to_HANA.close()
         connection_to_HANA = None
     
@@ -544,6 +556,14 @@ def save_outputs_command():
     save_outputs_pgb.start()
     save_outputs_thread.join()
     save_outputs_pgb.stop()
+    
+def startup():
+    out_string = connectToHANA()
+    statusbar.config(text = out_string)
+    (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
+    display_info_widget['state'] = 'normal'
+    display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}')
+    display_info_widget['state'] = 'disabled'
     
 if __name__ == '__main__':
 
@@ -563,28 +583,34 @@ if __name__ == '__main__':
     s.configure('TLabel', background = 'white')
     s.configure('TLoadingWindow.TFrame', background = 'grey')
 
+    statusbar = tk.Label(root, text = 'Establishing connection to cloud database...', relief = tk.SUNKEN, anchor = 'w')
+    statusbar.pack(side = tk.BOTTOM, fill = tk.X)
+
     buttons_frame = ttk.Frame(root, width = 270)
     buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10, fill = tk.Y)
     buttons_frame.pack_propagate(0)
 
-    read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Select data source')
+    read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Select Data Source')
     read_data_lf.pack(fill = tk.X, padx = 10, pady = 10)
+    
+    read_data_frame = ttk.Frame(read_data_lf)
+    read_data_frame.pack()
 
-    update_db_from_SAGE_btn = ttk.Button(read_data_lf, text = 'Read from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
-    update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2)
+    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
+    update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
 
-    generate_model_files_from_backup_btn = ttk.Button(read_data_lf, text = 'Read from cloud database', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
+    generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
     #generate_model_files_from_backup_btn = ttk.Button(read_data_lf, text = 'Read from HANA backup', command = lambda: generate_model_files_from_backup_command())
-    generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2)
+    generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
-    manual_input_lf = ttk.LabelFrame(buttons_frame, text = '2. Add manual input (optional)')
+    manual_input_lf = ttk.LabelFrame(buttons_frame, text = '2. Add Manual Input (optional)')
     manual_input_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
-    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit manual tables')
+    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables')
     add_manual_input_btn.pack(padx = 10, pady = (15, 20), ipadx = 10, ipady = 2)
     add_manual_input_btn.state(['disabled'])
 
-    run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select experiment')
+    run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select Experiment')
     run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
     
     run_model_frame = ttk.Frame(run_model_lf)
@@ -602,19 +628,24 @@ if __name__ == '__main__':
     sac_buttons_frame = ttk.Frame(sac_buttons_lf)
     sac_buttons_frame.pack()
 
-    report_catalog_btn = ttk.Button(sac_buttons_frame, text = 'Report Catalog', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
+    report_catalog_btn = ttk.Button(sac_buttons_frame, text = 'Report Catalog', 
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
     report_catalog_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
     
-    run_summary_btn = ttk.Button(sac_buttons_frame, text = 'Run Summary', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
+    run_summary_btn = ttk.Button(sac_buttons_frame, text = 'Run Summary', 
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
     run_summary_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
     
-    demand_review_btn = ttk.Button(sac_buttons_frame, text = 'Demand Review', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
+    demand_review_btn = ttk.Button(sac_buttons_frame, text = 'Demand Review', 
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
     demand_review_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
     
-    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Unassigned WO', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
+    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Unassigned WO', 
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
     unassigned_wo_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
     
-    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Data Errors', command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
+    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Data Errors', 
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
     data_errors_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
     tables_separator = ttk.Separator(root, orient = 'vertical')
@@ -623,7 +654,7 @@ if __name__ == '__main__':
     # text_frame = tk.Frame(root, bg = 'red')
     # text_frame.pack(padx = 20, side = tk.LEFT, expand = True, fill = tk.BOTH)
 
-    display_info_widget = tk.Text(root, state = 'disabled', wrap = 'word', relief = tk.SUNKEN, bg = 'lavender')
+    display_info_widget = tk.Text(root, wrap = 'word', state = 'disabled', relief = tk.SUNKEN, bg = 'white')
     display_info_widget.pack(side = tk.LEFT, expand = True, fill = tk.BOTH, padx = (20,0))
     display_info_ys = ttk.Scrollbar(root, orient = 'vertical', command = display_info_widget.yview)
     display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
@@ -632,18 +663,13 @@ if __name__ == '__main__':
     # save_outputs_btn = tk.Button(buttons_frame, text = 'Save outputs', command = lambda: threading.Thread(target = save_outputs_command, daemon = True).start())
     # save_outputs_btn.pack(padx = 10, pady = 10)
 
-    # save_outputs_pgb = ttk.Progressbar(buttons_frame, mode = 'indeterminate')
-    # save_outputs_pgb.pack(padx = 10, pady = 10)
-    
-    # fig, ax = plt.subplots()
     fig = Figure()
     ax = fig.add_subplot(111)
-    # a = df.cumsum().plot(kind = 'area', ax = ax)
-    # a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
-    # a.set_ylabel('Pounds (in millions)')
     canvas = FigureCanvasTkAgg(fig, master = display_info_widget)
     canvas.draw()
-    canvas.get_tk_widget().pack()
+    #canvas.get_tk_widget().pack()
+
+    threading.Thread(target = startup).start()
 
     root.mainloop()
 
