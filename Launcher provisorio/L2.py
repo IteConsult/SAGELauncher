@@ -41,6 +41,102 @@ def connectToHANA():
             print('Connection failed! ' + str(e))
             return 'Connection to cloud database failed!'
 
+def update_db_from_SAGE():
+    print('update_db_from_SAGE function called.')
+    
+    #Connect to HANA
+    try:
+        connectToHANA()
+    except:
+        print('Couldn\'t connect to database!') #TODO add warning message
+        return 1
+
+    table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
+              'Inventory': r'http://10.4.240.65/api/IntegrationAPI/GetInventory',
+              'Facility': r'http://10.4.240.65/api/IntegrationAPI/GetItemFacility',
+              'ItemMaster': r'http://10.4.240.65/api/IntegrationAPI/GetItemMstr',
+              'RoutingAndRates': r'http://10.4.240.65/api/IntegrationAPI/GetRoutingAndRates',
+              'WorkCenters': r'http://10.4.240.65/api/IntegrationAPI/GetWorkCenters',
+              'WorkOrders': r'http://10.4.240.65/api/IntegrationAPI/GetWorkOrders'}
+
+    #Reads tables from REST services
+    for table in table_urls:
+        if connection_to_HANA:
+            try:
+                globals()[table] = pd.read_json(table_urls[table], dtype = str)
+                print(f'Table {table} succesfully loaded.')
+            except Exception as e:
+                print(f'Couldn\'t load table {table}: ' + str(e))
+                return 1
+                #try to read backup from HANA?
+        else:
+            return 1
+
+    #Upload raw SAGE tables into HANA
+    for table in table_urls:
+        try:
+            connection_to_HANA.execute(f'DELETE FROM "SAGE".{table}')
+            globals()[table].to_sql(table.lower(), con = connection_to_HANA, if_exists = 'append', index = False, schema = 'sage')
+            print(f'Table {table} was uploaded to HANA succesfully.')
+        except Exception as e:
+            print(f'Couldn\'t save {table} table into HANA. ' + str(e))
+            return 1
+
+    #Read manual files from HANA
+    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good']
+
+    for table in manual_files:
+        try:
+            globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
+            print(f'Table {table} succesfully read from HANA.')
+        except Exception as e:
+            print('Couldn\'t read table {table} from HANA. ' + str(e))
+            return 1
+    
+    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
+    
+    print(f'generate_model_files_from_backup function finished with code {s_code}.')
+    
+    return s_code
+
+def generate_model_files_from_backup():
+    print('generate_model_files_from_backup function called.')
+
+    #Connect to HANA
+    try:
+        connectToHANA()
+    except:
+        print('Couldn\'t connect to database!') #TODO add warning message
+        return 1
+
+    tables = ['BOM', 'Inventory', 'Facility', 'ItemMaster', 'RoutingAndRates', 'WorkCenters', 'WorkOrders']
+
+    #Read SAGE tables from HANA
+    for table in tables:
+        try:
+            globals()[table] = pd.read_sql_table(table.lower(), schema = 'sage', con = connection_to_HANA).astype(str)
+            print(f'Table {table} succesfully read from HANA.')
+        except Exception as e:
+            print(f'Couldn\'t read table {table} from HANA. ' + str(e))
+            return 1
+
+    #Read manual files from HANA
+    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good']
+    
+    for table in manual_files:
+        try:
+            globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
+            print(f'Table {table} sucesfully read from HANA.')
+        except:
+            print(f'Couldn\'t read {table} from HANA.' + str(e))
+            return 1
+    
+    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
+    
+    print(f'generate_model_files_from_backup function finished with code {s_code}.')
+    
+    return s_code
+
 def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good):
     #Merging with ItemMaster
     BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
@@ -352,11 +448,15 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     #5) Save upload time info
     try:
         connection_to_HANA.execute('DELETE FROM "SAGE"."LOG"')
-        pd.DataFrame([[pd.to_datetime(datetime.datetime.now()), DEMAND['Demand quantity (pounds)'].sum()]], columns = ['TIME', 'TOTAL_DEMAND']).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
+        time = pd.to_datetime(datetime.datetime.now())
+        total_demand = DEMAND['Demand quantity (pounds)'].sum()
+        pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
         print('Update backup time succesfull.')
+        display_info_widget['state'] = 'normal'
+        display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n')
+        display_info_widget['state'] = 'disabled'
     except Exception as e:
         print('Failed to update backup time: ' + str(e))
-    
     
     if to_excel:
         dic = {'BREAKOUT': 'Breakout_file.xlsx',
@@ -382,105 +482,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
 
     return 0
 
-
-def update_db_from_SAGE():
-    print('update_db_from_SAGE function called.')
-    
-    #Connect to HANA
-    try:
-        connectToHANA()
-    except:
-        print('Couldn\'t connect to database!') #TODO add warning message
-        return 1
-
-    table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
-              'Inventory': r'http://10.4.240.65/api/IntegrationAPI/GetInventory',
-              'Facility': r'http://10.4.240.65/api/IntegrationAPI/GetItemFacility',
-              'ItemMaster': r'http://10.4.240.65/api/IntegrationAPI/GetItemMstr',
-              'RoutingAndRates': r'http://10.4.240.65/api/IntegrationAPI/GetRoutingAndRates',
-              'WorkCenters': r'http://10.4.240.65/api/IntegrationAPI/GetWorkCenters',
-              'WorkOrders': r'http://10.4.240.65/api/IntegrationAPI/GetWorkOrders'}
-
-    #Reads tables from REST services
-    for table in table_urls:
-        if connection_to_HANA:
-            try:
-                globals()[table] = pd.read_json(table_urls[table], dtype = str)
-                print(f'Table {table} succesfully loaded.')
-            except Exception as e:
-                print(f'Couldn\'t load table {table}: ' + str(e))
-                return 1
-                #try to read backup from HANA?
-        else:
-            return 1
-
-    #Upload raw SAGE tables into HANA
-    for table in table_urls:
-        try:
-            connection_to_HANA.execute(f'DELETE FROM "SAGE".{table}')
-            globals()[table].to_sql(table.lower(), con = connection_to_HANA, if_exists = 'append', index = False, schema = 'sage')
-            print(f'Table {table} was uploaded to HANA succesfully.')
-        except Exception as e:
-            print(f'Couldn\'t save {table} table into HANA. ' + str(e))
-            return 1
-
-    #Read manual files from HANA
-    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good']
-
-    for table in manual_files:
-        try:
-            globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
-            print(f'Table {table} succesfully read from HANA.')
-        except Exception as e:
-            print('Couldn\'t read table {table} from HANA. ' + str(e))
-            return 1
-    
-    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
-    
-    print(f'generate_model_files_from_backup function finished with code {s_code}.')
-    
-    return s_code
-
-def generate_model_files_from_backup():
-    print('generate_model_files_from_backup function called.')
-
-    #Connect to HANA
-    try:
-        connectToHANA()
-    except:
-        print('Couldn\'t connect to database!') #TODO add warning message
-        return 1
-
-    tables = ['BOM', 'Inventory', 'Facility', 'ItemMaster', 'RoutingAndRates', 'WorkCenters', 'WorkOrders']
-
-    #Read SAGE tables from HANA
-    for table in tables:
-        try:
-            globals()[table] = pd.read_sql_table(table.lower(), schema = 'sage', con = connection_to_HANA).astype(str)
-            print(f'Table {table} succesfully read from HANA.')
-        except Exception as e:
-            print(f'Couldn\'t read table {table} from HANA. ' + str(e))
-            return 1
-
-    #Read manual files from HANA
-    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good']
-    
-    for table in manual_files:
-        try:
-            globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
-            print(f'Table {table} sucesfully read from HANA.')
-        except:
-            print(f'Couldn\'t read {table} from HANA.' + str(e))
-            return 1
-    
-    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
-    
-    print(f'generate_model_files_from_backup function finished with code {s_code}.')
-    
-    return s_code
-    
 def display_info(DEMAND):
-
     df = DEMAND.copy()
     df['Due date'] = pd.to_datetime(df['Due date'])
     df = df[['Due date', 'Demand quantity (pounds)', 'Facility']].groupby(['Due date', 'Facility']).sum()
@@ -494,14 +496,10 @@ def display_info(DEMAND):
     a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
     a.set_ylabel('Pounds (in millions)')
     fig.canvas.draw_idle()
-    canvas.get_tk_widget().pack()
+    # canvas.get_tk_widget().pack(anchor = 'w')
+    display_info_widget.window_create('end', window = canvas.get_tk_widget())
 
 def update_db_from_SAGE_command():
-    # update_db_from_SAGE_thread = threading.Thread(target = update_db_from_SAGE, daemon = True)
-    # update_db_from_SAGE_thread.start()
-    # #update_db_from_SAGE_pgb.start()
-    # update_db_from_SAGE_thread.join()
-    # #update_db_from_SAGE_pgb.stop()
     loading_window_from_SAGE = LoadingWindow(root, update_db_from_SAGE)
 
 def generate_model_files_from_backup_command():
@@ -562,7 +560,7 @@ def startup():
     statusbar.config(text = out_string)
     (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
     display_info_widget['state'] = 'normal'
-    display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}')
+    display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n\n')
     display_info_widget['state'] = 'disabled'
     
 if __name__ == '__main__':
