@@ -5,6 +5,7 @@
 #*Run optimization
 #*Save outputs
 
+import time
 import subprocess
 import tkinter as tk
 from tkinter import ttk
@@ -43,7 +44,7 @@ def connectToHANA():
 
 def update_db_from_SAGE():
     print('update_db_from_SAGE function called.')
-    
+
     #Connect to HANA
     try:
         connectToHANA()
@@ -83,7 +84,7 @@ def update_db_from_SAGE():
             return 1
 
     #Read manual files from HANA
-    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good']
+    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families']
 
     for table in manual_files:
         try:
@@ -92,11 +93,12 @@ def update_db_from_SAGE():
         except Exception as e:
             print('Couldn\'t read table {table} from HANA. ' + str(e))
             return 1
-    
-    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
-    
+
+    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters,
+                                                Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families)
+
     print(f'generate_model_files_from_backup function finished with code {s_code}.')
-    
+
     return s_code
 
 def generate_model_files_from_backup():
@@ -121,8 +123,8 @@ def generate_model_files_from_backup():
             return 1
 
     #Read manual files from HANA
-    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good']
-    
+    manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good', 'Families', 'Product_Priority', 'Customer_Priority', 'Extruders_Schedule']
+
     for table in manual_files:
         try:
             globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
@@ -130,14 +132,14 @@ def generate_model_files_from_backup():
         except:
             print(f'Couldn\'t read {table} from HANA.' + str(e))
             return 1
-    
-    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good)
-    
+
+    s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families)
+
     print(f'generate_model_files_from_backup function finished with code {s_code}.')
-    
+
     return s_code
 
-def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good):
+def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good, Families):
     #Merging with ItemMaster
     BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
     BREAKOUT.dropna(subset = ['ItemWeight', 'BagWeight'], inplace = True)
@@ -159,35 +161,37 @@ def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Goo
     #Weight is BagSize
     BREAKOUT.rename({'BagWeight': 'Weight'}, axis = 1, inplace = True)
     BREAKOUT['Weight'] = BREAKOUT['Weight'].astype(float)
+    #Bring Family column
+    BREAKOUT = BREAKOUT.merge(Families, left_on = 'ItemNumber', right_on = 'Finished Good', how = 'left').drop('Finished Good', axis = 1)
+    BREAKOUT['Family'].fillna('NONE', inplace = True)
+    BREAKOUT['Family Sequence'].fillna('0', inplace = True)
     #Generate missing columns
-    BREAKOUT['Family'] = 'NONE'
     BREAKOUT['color'] = 0
     BREAKOUT['shape'] = 0
     BREAKOUT['Type-Shape-Size Concat'] = BREAKOUT['ProductType'].copy()
     BREAKOUT['Dry-Liquid-Digest Concat'] = '0 - 0'
-    BREAKOUT['Family Sequence'] = 0
     BREAKOUT['Max Run Size (lb)'] = 0
     #TODO Provisorio (después va a estar en el Extruders cuando se acople el modelo)
     BREAKOUT = BREAKOUT.merge(Facility[['ItemNumber', 'FormulaMinRunSize']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
     BREAKOUT['FormulaMinRunSize'] = BREAKOUT['FormulaMinRunSize'].astype(float).fillna(0)
     #Set column order
-    BREAKOUT = BREAKOUT[['ItemNumber', 'Family', 'ComponentItemNumber', 'color', 'shape', 'ProductType', 'Type-Shape-Size Concat', 'Dry-Liquid-Digest Concat', 
+    BREAKOUT = BREAKOUT[['ItemNumber', 'Family', 'ComponentItemNumber', 'color', 'shape', 'ProductType', 'Type-Shape-Size Concat', 'Dry-Liquid-Digest Concat',
                 'BlendPercentage', 'Family Sequence', 'Max Run Size (lb)', 'Weight', 'FormulaMinRunSize']]
     #Change column names
-    BREAKOUT.rename({'ItemNumber': 'Finished good', 'ComponentItemNumber': 'Component formula', 'ProductType': 'Category', 'BlendPercentage': 'Blend percentage', 'FormulaMinRunSize': 'Minimum run size'}, axis = 1, inplace = True)    
+    BREAKOUT.rename({'ItemNumber': 'Finished good', 'ComponentItemNumber': 'Component formula', 'ProductType': 'Category', 'BlendPercentage': 'Blend percentage', 'FormulaMinRunSize': 'Minimum run size'}, axis = 1, inplace = True)
     #TODO PROVISORIO Esto es para traer el type desde JDE. Funciona solamente si tenemos presente la tabla "MD_Bulk_Code.csv" de SQL_Files. Pedirla a Juan si no la tenés.
     #JDE = pd.read_csv('MD_Bulk_Code.csv')
     BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'LegacyCJFCode']].groupby('ItemNumber').first(), left_on = 'Component formula', right_on = 'ItemNumber', how = 'left')
     BREAKOUT = BREAKOUT.merge(MD_Bulk_Code[['id', 'Type']], left_on = 'LegacyCJFCode', right_on = 'id', how = 'left')
     BREAKOUT['Category'] = BREAKOUT['Type'].copy().fillna('0').apply(lambda x: x.upper())
     BREAKOUT['Type-Shape-Size Concat'] = BREAKOUT['Type'].copy()
-    
+
     #TODO provisorio ----
     #JDE_FG = pd.read_csv("Finished_Good.csv", header=0, index_col=False, keep_default_na=True)
     Finished_Good = Finished_Good[(Finished_Good.Account == "lb/Unit") & (Finished_Good.Measure == 500)]
     Finished_Good = Finished_Good[["Item_Code", "Measure"]]
     BREAKOUT = BREAKOUT.drop("LegacyCJFCode", axis=1)
-    BREAKOUT = BREAKOUT.merge(ItemMaster[["ItemNumber", "LegacyCJFCode"]].groupby("ItemNumber").first(), left_on="Finished good", right_on="ItemNumber", how="left") 
+    BREAKOUT = BREAKOUT.merge(ItemMaster[["ItemNumber", "LegacyCJFCode"]].groupby("ItemNumber").first(), left_on="Finished good", right_on="ItemNumber", how="left")
     BREAKOUT = BREAKOUT.merge(Finished_Good, left_on="LegacyCJFCode", right_on="Item_Code", how="left")
     BREAKOUT["Weight"] = np.where(BREAKOUT["Measure"] == 500, "500", BREAKOUT["Weight"])
     BREAKOUT.drop(['id', 'Type', 'Item_Code', 'Measure', "LegacyCJFCode"], axis = 1, inplace = True)
@@ -253,7 +257,7 @@ def generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCent
 
     return PACKLINES, EXTRUDERS
 
-def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS):    
+def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority, Customer_Priority, BREAKOUT, PACKLINES, EXTRUDERS):
     #TODO PROVISORIO
     DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
     #Filter only FG items
@@ -296,8 +300,11 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     DEMAND['Due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
     DEMAND['Raw material date'] = DEMAND['Due date'] - datetime.timedelta(15)
     DEMAND['Inventory'] = 0
-    DEMAND['Priority product'] = 0
-    DEMAND['Priority'] = 0
+    #Bring Priority columns
+    DEMAND = DEMAND.merge(Product_Priority, left_on = 'ItemNumber', right_on = 'Finished Good', how = 'left').drop('Finished Good', axis = 1)
+    DEMAND['Product Priority'].fillna(0, inplace = True)
+    DEMAND = DEMAND.merge(Customer_Priority, on = 'Customer', how = 'left')
+    DEMAND['Customer Priority'].fillna('0', inplace = True)
     DEMAND['Purchase order'] = 'missing'
     DEMAND['Entity'] = 'CJFoods'
     DEMAND['Sales order'] = 'missing'
@@ -305,9 +312,9 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     DEMAND['Original due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
     #TODO corregir process date?
     DEMAND['Process date'] = datetime.date.today().strftime("%Y-%m-%d")
-    DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location', 'WorkCenter': 'Packline', 
-                   'WorkOrderNumber': 'Work order'}, axis = 1, inplace = True)
-    DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Formula', 'Inventory', 'Priority product', 'Priority', 'Raw material date', 
+    DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location', 'WorkCenter': 'Packline',
+                   'WorkOrderNumber': 'Work order', 'Product Priority': 'Priority product', 'Customer Priority': 'Priority'}, axis = 1, inplace = True)
+    DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Formula', 'Inventory', 'Priority product', 'Priority', 'Raw material date',
                      'Demand quantity (pounds)', 'Due date', 'Location', 'Purchase order', 'Sales order', 'Original due date',
                      'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
 
@@ -315,16 +322,7 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLIN
     ERROR_DEMAND['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
     ERROR_DEMAND['Run'] = 1
 
-    CUSTOMER_PRIORITY = pd.DataFrame(data = DEMAND['Customer'].unique(), columns = ['Customer'])
-    CUSTOMER_PRIORITY['Priority'] = 0
-
-    PRODUCT_PRIORITY = pd.DataFrame(data = DEMAND['Finished good'].unique(), columns = ['Finished good'])
-    PRODUCT_PRIORITY['Priority'] = 0
-    
-    FAMILIES = pd.DataFrame(data = DEMAND['Finished good'].unique(), columns = ['Finished good'])
-    FAMILIES['Family sequence'] = 0
-
-    return DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY, FAMILIES
+    return DEMAND, ERROR_DEMAND
 
 def generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, DEMAND, BREAKOUT):
     #TODO hay que repensarla cuando arreglen lo de la Facility en el ItemMaster
@@ -353,17 +351,16 @@ def generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, 
     INVENTORY_BULK['Quantity'] = INVENTORY_BULK[['Quantity_needed', 'Quantity_actual']].max(axis = 1)
 
     INVENTORY_BULK = INVENTORY_BULK[['Component formula', 'Facility', 'Quantity']]
-    
+
     return INVENTORY_BULK
 
-
-def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good):
+def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families):
 
     #Model files generation and uploading
 
     #1) Breakout
     try:
-        BREAKOUT = generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good)
+        BREAKOUT = generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good, Families)
         print('Breakout table succesfully generated.')
     except Exception as e:
         print('Failed to generate Breakout table: ' + str(e))
@@ -377,7 +374,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         except Exception as e:
             print('Failed to upload Breakout table to HANA: ' + str(e))
             return 1
-                
+
     #2) Packlines and extruders
     try:
         PACKLINES, EXTRUDERS = generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility, Finished_Good)
@@ -406,7 +403,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
     try:
         global DEMAND
-        DEMAND, ERROR_DEMAND, CUSTOMER_PRIORITY, PRODUCT_PRIORITY, FAMILIES = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, BREAKOUT, PACKLINES, EXTRUDERS)
+        DEMAND, ERROR_DEMAND = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority, Customer_Priority, BREAKOUT, PACKLINES, EXTRUDERS)
         print('Demand table succesfully generated.')
     except Exception as e:
         print('Failed to generate Demand table: ' + str(e))
@@ -451,13 +448,13 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         time = pd.to_datetime(datetime.datetime.now())
         total_demand = DEMAND['Demand quantity (pounds)'].sum()
         pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
-        print('Update backup time succesfull.')
+        print('Updated backup time successfully.')
         display_info_widget['state'] = 'normal'
         display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n')
         display_info_widget['state'] = 'disabled'
     except Exception as e:
         print('Failed to update backup time: ' + str(e))
-    
+
     if to_excel:
         dic = {'BREAKOUT': 'Breakout_file.xlsx',
             'PACKLINES': 'Packlines.xlsx',
@@ -491,10 +488,11 @@ def display_info(DEMAND):
     df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
     df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
     df = df.groupby('Week start').sum()
-    
+
     a = df.cumsum().plot(kind = 'area', ax = ax)
     a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
     a.set_ylabel('Pounds (in millions)')
+
     fig.canvas.draw_idle()
     # canvas.get_tk_widget().pack(anchor = 'w')
     display_info_widget.window_create('end', window = canvas.get_tk_widget())
@@ -509,10 +507,10 @@ class LoadingWindow(tk.Toplevel):
 
     def __init__(self, parent, command, *args, **kwargs):
         self.size = (300, 80)
-        tk.Toplevel.__init__(self, parent)
+        tk.Toplevel.__init__(self, parent, *args, **kwargs)
         self.screen_position = lambda width, height: (width, height, (s_width - width)//2, (s_height - height)//2)
         self.geometry('%dx%d+%d+%d' % self.screen_position(*self.size))
-        self.wm_protocol("WM_DELETE_WINDOW", lambda: close_window(self))
+        self.wm_protocol("WM_DELETE_WINDOW", lambda: self.close_window())
         self.title('Please wait...')
         self.loading_frame = ttk.Frame(self, style = 'LoadingWindow.TFrame')
         self.loading_frame.pack(expand = True, fill = tk.BOTH)
@@ -531,7 +529,7 @@ class LoadingWindow(tk.Toplevel):
         self.thread.start()
         self.thread.join()
         self.destroy()
-        
+
     def close_window(self):
         global connection_to_HANA
         print('Process interrupted.')
@@ -539,11 +537,125 @@ class LoadingWindow(tk.Toplevel):
         #TODO find a better way to kill ongoing thread
         connection_to_HANA.close()
         connection_to_HANA = None
-    
+
+class CustomTable(pandastable.Table):
+
+	def __init__(self, *args, non_editable_columns = [], **kwargs):
+		pandastable.Table.__init__(self, *args, **kwargs)
+		self.non_editable_columns = non_editable_columns
+
+
+	def drawCellEntry(self, row, col, text=None):
+			"""When the user single/double clicks on a text/number cell,
+			  bring up entry window and allow edits."""
+
+			if self.editable == False:
+				return
+            #These two lines are the difference between this custom class and the general class:
+			if col in self.non_editable_columns:
+				return
+			h = self.rowheight
+			model = self.model
+			text = self.model.getValueAt(row, col)
+			if pd.isnull(text):
+				text = ''
+			x1,y1,x2,y2 = self.getCellCoords(row,col)
+			w=x2-x1
+			self.cellentryvar = txtvar = tk.StringVar()
+			txtvar.set(text)
+
+			self.cellentry = ttk.Entry(self.parentframe,width=20,
+							textvariable=txtvar,
+							takefocus=1,
+							font=self.thefont)
+			self.cellentry.icursor(tk.END)
+			self.cellentry.bind('<Return>', lambda x: self.handleCellEntry(row,col))
+			self.cellentry.focus_set()
+			self.entrywin = self.create_window(x1,y1,
+									width=w,height=h,
+									window=self.cellentry,anchor='nw',
+									tag='entry')
+			return
+
     #TODO terminar esta función
-# def add_manual_input_command():
-    # add_manual_input_thread = threading.Thread(target = add_manual_input, daemon = True)
-    # add_manual_input_thread.start()
+def add_manual_input():
+    manual_window = ManualInput(root)
+
+    #manual_window.resizable(0,0)
+
+class ManualInput(tk.Toplevel):
+
+    def __init__(self, root):
+        tk.Toplevel.__init__(self, root)
+        self.size = (700, 400)
+        screen_position = lambda width, height: (width, height, (s_width - width)//2, (s_height - height)//2)
+        self.geometry('%dx%d+%d+%d' % screen_position(*self.size))
+        self.transient(root)
+
+        self.main_frame = ttk.Frame(self)
+        # manual_window.resizable(0,0)
+        self.main_frame.pack(expand = True, fill = tk.BOTH)
+
+        self.treeview_frame = ttk.Frame(self.main_frame)
+        self.treeview_frame.pack(side = tk.LEFT, fill = tk.Y, padx = 20, pady = 20)
+
+        self.tables_treeview = ttk.Treeview(self.treeview_frame, selectmode = 'browse', height = 4)
+        self.tables_treeview.heading("#0", text = "Select table", anchor = tk.W)
+        self.tables_treeview.insert('', 0, iid = 'customer', text = 'Customer priority')
+        self.tables_treeview.insert('', 0, iid = 'product_priority', text = 'Product priority')
+        self.tables_treeview.insert('', 0, iid = 'families', text = 'Families')
+        self.tables_treeview.insert('', 0, iid = 'extruders_schedule', text = 'Extruders Schedule')
+        #TODO bind method
+        self.tables_treeview.bind('<<TreeviewSelect>>', self.show_selected_table)
+        self.tables_treeview.pack()
+
+        self.upload_from_file_btn = ttk.Button(self.treeview_frame, text = 'Select file', command = self.select_file) #TODO command
+        self.upload_from_file_btn.pack(pady = 20, anchor = 'e')
+
+        self.tables_separator = ttk.Separator(self.main_frame, orient = 'vertical')
+        self.tables_separator.pack(side = tk.LEFT, fill = tk.Y, padx = (0,20))
+
+        self.tables_frame = ttk.Frame(self.main_frame)
+        self.tables_frame.pack(side = tk.LEFT, fill = tk.BOTH)
+        self.tables_frame.grid_rowconfigure(0, weight = 1)
+        self.tables_frame.grid_columnconfigure(0, weight = 1)
+
+        self.families_frm = ttk.Frame(self.tables_frame)
+        self.extruders_schedule_frm = ttk.Frame(self.tables_frame)
+        self.customer_frm = ttk.Frame(self.tables_frame)
+        self.product_priority_frm = ttk.Frame(self.tables_frame)
+
+        self.frames_dic = {'customer': self.customer_frm, 'product_priority': self.product_priority_frm, 'families': self.families_frm, 'extruders_schedule': self.extruders_schedule_frm}
+
+        # self.extruders_schedule_df = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
+        self.extruders_schedule_pt = CustomTable(self.extruders_schedule_frm, dataframe = extruders_schedule_df, showtoolbar = False, showstatusbar = False, editable = True)
+        self.extruders_schedule_pt.show()
+        self.extruders_schedule_frm.grid(row = 0, column = 0, sticky = 'nsew')
+
+        # self.families_df = pd.read_sql_table('families', schema = 'manual_files', con = connection_to_HANA)
+        self.families_pt = CustomTable(self.families_frm, dataframe = families_df, showtoolbar = False, showstatusbar = False, editable = True)
+        self.families_pt.show()
+        self.families_frm.grid(row = 0, column = 0, sticky = 'nsew')
+
+        # self.product_priority_df = pd.read_sql_table('product_priority', schema = 'manual_files', con = connection_to_HANA)
+        self.product_priority_pt = CustomTable(self.product_priority_frm, dataframe = product_priority_df, showtoolbar = False, showstatusbar = False, editable = True)
+        self.product_priority_pt.show()
+        self.product_priority_frm.grid(row = 0, column = 0, sticky = 'nsew')
+
+        # self.customer_df = pd.read_sql_table('customer_priority', schema = 'manual_files', con = connection_to_HANA)
+        self.customer_pt = CustomTable(self.customer_frm, dataframe = customer_df, showtoolbar = False, showstatusbar = False, editable = True)
+        self.customer_pt.show()
+        self.customer_frm.grid(row = 0, column = 0, sticky = 'nsew')
+
+    def show_selected_table(self, event):
+        selected_iid = event.widget.focus()
+        self.frames_dic[selected_iid].tkraise()
+        
+    def select_file(self):
+        # filename =  tk.filedialog.askopenfilename(initialdir = "/", title = "Select file", filetypes = (("jpeg files","*.jpg"),("all files","*.*")) )
+        filename =  tk.filedialog.askopenfilename(initialdir = "/", title = "Select file", filetypes = ((".csv files","*.csv"),("Excel sheet","*.xlsx")) )
+        selected_iid = self.tables_treeview.focus()
+        
 
 def run_experiment(experiment):
     subprocess.run(f'Model\CJFoods_windows-{experiment}.bat')
@@ -554,15 +666,24 @@ def save_outputs_command():
     save_outputs_pgb.start()
     save_outputs_thread.join()
     save_outputs_pgb.stop()
-    
+
 def startup():
     out_string = connectToHANA()
     statusbar.config(text = out_string)
-    (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
-    display_info_widget['state'] = 'normal'
-    display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n\n')
-    display_info_widget['state'] = 'disabled'
-    
+    if connection_to_HANA:
+        (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
+        display_info_widget['state'] = 'normal'
+        display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n\n')
+        display_info_widget['state'] = 'disabled'
+        #Load manual tables
+        global extruders_schedule_df, families_df, product_priority_df, customer_df
+        extruders_schedule_df = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
+        families_df = pd.read_sql_table('families', schema = 'manual_files', con = connection_to_HANA)
+        product_priority_df = pd.read_sql_table('product_priority', schema = 'manual_files', con = connection_to_HANA)
+        customer_df = pd.read_sql_table('customer_priority', schema = 'manual_files', con = connection_to_HANA)
+
+        add_manual_input_btn['state'] = 'normal'
+
 if __name__ == '__main__':
 
     root = tk.Tk()
@@ -590,7 +711,7 @@ if __name__ == '__main__':
 
     read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Select Data Source')
     read_data_lf.pack(fill = tk.X, padx = 10, pady = 10)
-    
+
     read_data_frame = ttk.Frame(read_data_lf)
     read_data_frame.pack()
 
@@ -598,19 +719,18 @@ if __name__ == '__main__':
     update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
 
     generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
-    #generate_model_files_from_backup_btn = ttk.Button(read_data_lf, text = 'Read from HANA backup', command = lambda: generate_model_files_from_backup_command())
     generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
     manual_input_lf = ttk.LabelFrame(buttons_frame, text = '2. Add Manual Input (optional)')
     manual_input_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
-    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables')
+    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables', command = lambda: threading.Thread(target = add_manual_input).start())
     add_manual_input_btn.pack(padx = 10, pady = (15, 20), ipadx = 10, ipady = 2)
     add_manual_input_btn.state(['disabled'])
 
     run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select Experiment')
     run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
-    
+
     run_model_frame = ttk.Frame(run_model_lf)
     run_model_frame.pack()
 
@@ -619,47 +739,41 @@ if __name__ == '__main__':
 
     run_optimization_btn = ttk.Button(run_model_frame, text = 'Run Optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
     run_optimization_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
-    
+
     sac_buttons_lf = ttk.LabelFrame(buttons_frame, text = '4. View Cloud Stories')
     sac_buttons_lf.pack(fill = tk.X, padx = 10, pady = 10)
-    
+
     sac_buttons_frame = ttk.Frame(sac_buttons_lf)
     sac_buttons_frame.pack()
 
-    report_catalog_btn = ttk.Button(sac_buttons_frame, text = 'Report Catalog', 
+    report_catalog_btn = ttk.Button(sac_buttons_frame, text = 'Report Catalog',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
     report_catalog_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
-    
-    run_summary_btn = ttk.Button(sac_buttons_frame, text = 'Run Summary', 
+
+    run_summary_btn = ttk.Button(sac_buttons_frame, text = 'Run Summary',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
     run_summary_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
-    
-    demand_review_btn = ttk.Button(sac_buttons_frame, text = 'Demand Review', 
+
+    demand_review_btn = ttk.Button(sac_buttons_frame, text = 'Demand Review',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
     demand_review_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
-    
-    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Unassigned WO', 
+
+    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Unassigned WO',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
     unassigned_wo_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
-    
-    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Data Errors', 
+
+    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Data Errors',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
     data_errors_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
 
-    # text_frame = tk.Frame(root, bg = 'red')
-    # text_frame.pack(padx = 20, side = tk.LEFT, expand = True, fill = tk.BOTH)
-
     display_info_widget = tk.Text(root, wrap = 'word', state = 'disabled', relief = tk.SUNKEN, bg = 'white')
     display_info_widget.pack(side = tk.LEFT, expand = True, fill = tk.BOTH, padx = (20,0))
     display_info_ys = ttk.Scrollbar(root, orient = 'vertical', command = display_info_widget.yview)
     display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
     display_info_widget['yscrollcommand'] = display_info_ys.set
-
-    # save_outputs_btn = tk.Button(buttons_frame, text = 'Save outputs', command = lambda: threading.Thread(target = save_outputs_command, daemon = True).start())
-    # save_outputs_btn.pack(padx = 10, pady = 10)
 
     fig = Figure()
     ax = fig.add_subplot(111)
