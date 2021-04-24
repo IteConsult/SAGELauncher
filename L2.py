@@ -14,11 +14,12 @@ import threading
 import sqlalchemy
 import datetime
 import numpy as np
-import pandastable
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from webbrowser import open as webopen
+from CustomTable import CustomTable
+from ManualInput import ManualInput, LoadingWindow
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
@@ -42,7 +43,7 @@ def connectToHANA():
             print('Connection failed! ' + str(e))
             return 'Connection to cloud database failed!'
 
-def update_db_from_SAGE():
+def update_db_from_SAGE(loading_window):
     print('update_db_from_SAGE function called.')
 
     #Connect to HANA
@@ -68,6 +69,7 @@ def update_db_from_SAGE():
                 print(f'Table {table} succesfully loaded.')
             except Exception as e:
                 print(f'Couldn\'t load table {table}: ' + str(e))
+                loading_window.destroy()
                 return 1
                 #try to read backup from HANA?
         else:
@@ -81,6 +83,7 @@ def update_db_from_SAGE():
             print(f'Table {table} was uploaded to HANA succesfully.')
         except Exception as e:
             print(f'Couldn\'t save {table} table into HANA. ' + str(e))
+            loading_window.destroy()
             return 1
 
     #Read manual files from HANA
@@ -92,6 +95,7 @@ def update_db_from_SAGE():
             print(f'Table {table} succesfully read from HANA.')
         except Exception as e:
             print('Couldn\'t read table {table} from HANA. ' + str(e))
+            loading_window.destroy()
             return 1
 
     s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters,
@@ -99,9 +103,10 @@ def update_db_from_SAGE():
 
     print(f'generate_model_files_from_backup function finished with code {s_code}.')
 
+    loading_window.destroy()
     return s_code
 
-def generate_model_files_from_backup():
+def generate_model_files_from_backup(loading_window):
     print('generate_model_files_from_backup function called.')
 
     #Connect to HANA
@@ -109,6 +114,7 @@ def generate_model_files_from_backup():
         connectToHANA()
     except:
         print('Couldn\'t connect to database!') #TODO add warning message
+        loading_window.destroy()
         return 1
 
     tables = ['BOM', 'Inventory', 'Facility', 'ItemMaster', 'RoutingAndRates', 'WorkCenters', 'WorkOrders']
@@ -120,6 +126,7 @@ def generate_model_files_from_backup():
             print(f'Table {table} succesfully read from HANA.')
         except Exception as e:
             print(f'Couldn\'t read table {table} from HANA. ' + str(e))
+            loading_window.destroy()
             return 1
 
     #Read manual files from HANA
@@ -131,10 +138,12 @@ def generate_model_files_from_backup():
             print(f'Table {table} sucesfully read from HANA.')
         except:
             print(f'Couldn\'t read {table} from HANA.' + str(e))
+            loading_window.destroy()
             return 1
 
     s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families)
 
+    loading_window.destroy()
     print(f'generate_model_files_from_backup function finished with code {s_code}.')
 
     return s_code
@@ -503,159 +512,11 @@ def update_db_from_SAGE_command():
 def generate_model_files_from_backup_command():
     loading_window_backup = LoadingWindow(root, generate_model_files_from_backup)
 
-class LoadingWindow(tk.Toplevel):
-
-    def __init__(self, parent, command, *args, **kwargs):
-        self.size = (300, 80)
-        tk.Toplevel.__init__(self, parent, *args, **kwargs)
-        self.screen_position = lambda width, height: (width, height, (s_width - width)//2, (s_height - height)//2)
-        self.geometry('%dx%d+%d+%d' % self.screen_position(*self.size))
-        self.wm_protocol("WM_DELETE_WINDOW", lambda: self.close_window())
-        self.title('Please wait...')
-        self.loading_frame = ttk.Frame(self, style = 'LoadingWindow.TFrame')
-        self.loading_frame.pack(expand = True, fill = tk.BOTH)
-        self.loading_label = ttk.Label(self.loading_frame, text = 'Loading...')
-        # self.loading_label.pack(anchor = 'w', padx = 10, pady = 10)
-        self.loading_pgb = ttk.Progressbar(self.loading_frame, maximum = 20, mode = 'indeterminate')
-        self.loading_pgb.pack(padx = 10, pady = (10,0), fill = tk.X)
-        self.loading_pgb.start()
-        self.cancel_btn = ttk.Button(self.loading_frame, text = 'Cancel', command = lambda: self.close_window())
-        self.cancel_btn.pack(side = tk.BOTTOM, padx = 10, pady = (10,10), anchor = 'e')
-        self.grab_set()
-        self.focus_force()
-        self.resizable(0, 0)
-        self.transient(parent)
-        self.thread = threading.Thread(target = command, daemon = True)
-        self.thread.start()
-        self.thread.join()
-        self.destroy()
-
-    def close_window(self):
-        global connection_to_HANA
-        print('Process interrupted.')
-        self.destroy()
-        #TODO find a better way to kill ongoing thread
-        connection_to_HANA.close()
-        connection_to_HANA = None
-
-class CustomTable(pandastable.Table):
-
-	def __init__(self, *args, non_editable_columns = [], **kwargs):
-		pandastable.Table.__init__(self, *args, **kwargs)
-		self.non_editable_columns = non_editable_columns
-
-
-	def drawCellEntry(self, row, col, text=None):
-			"""When the user single/double clicks on a text/number cell,
-			  bring up entry window and allow edits."""
-
-			if self.editable == False:
-				return
-            #These two lines are the difference between this custom class and the general class:
-			if col in self.non_editable_columns:
-				return
-			h = self.rowheight
-			model = self.model
-			text = self.model.getValueAt(row, col)
-			if pd.isnull(text):
-				text = ''
-			x1,y1,x2,y2 = self.getCellCoords(row,col)
-			w=x2-x1
-			self.cellentryvar = txtvar = tk.StringVar()
-			txtvar.set(text)
-
-			self.cellentry = ttk.Entry(self.parentframe,width=20,
-							textvariable=txtvar,
-							takefocus=1,
-							font=self.thefont)
-			self.cellentry.icursor(tk.END)
-			self.cellentry.bind('<Return>', lambda x: self.handleCellEntry(row,col))
-			self.cellentry.focus_set()
-			self.entrywin = self.create_window(x1,y1,
-									width=w,height=h,
-									window=self.cellentry,anchor='nw',
-									tag='entry')
-			return
-
     #TODO terminar esta función
 def add_manual_input():
-    manual_window = ManualInput(root)
-
+    manual_window = ManualInput(root, connection_to_HANA, 
+                    extruders_schedule = 'Extruders Schedule', families = 'Families', product_priority = 'Product Priority', customer_priority = 'Customer Priority', )
     #manual_window.resizable(0,0)
-
-class ManualInput(tk.Toplevel):
-
-    def __init__(self, root):
-        tk.Toplevel.__init__(self, root)
-        self.size = (700, 400)
-        screen_position = lambda width, height: (width, height, (s_width - width)//2, (s_height - height)//2)
-        self.geometry('%dx%d+%d+%d' % screen_position(*self.size))
-        self.transient(root)
-
-        self.main_frame = ttk.Frame(self)
-        # manual_window.resizable(0,0)
-        self.main_frame.pack(expand = True, fill = tk.BOTH)
-
-        self.treeview_frame = ttk.Frame(self.main_frame)
-        self.treeview_frame.pack(side = tk.LEFT, fill = tk.Y, padx = 20, pady = 20)
-
-        self.tables_treeview = ttk.Treeview(self.treeview_frame, selectmode = 'browse', height = 4)
-        self.tables_treeview.heading("#0", text = "Select table", anchor = tk.W)
-        self.tables_treeview.insert('', 0, iid = 'customer', text = 'Customer priority')
-        self.tables_treeview.insert('', 0, iid = 'product_priority', text = 'Product priority')
-        self.tables_treeview.insert('', 0, iid = 'families', text = 'Families')
-        self.tables_treeview.insert('', 0, iid = 'extruders_schedule', text = 'Extruders Schedule')
-        #TODO bind method
-        self.tables_treeview.bind('<<TreeviewSelect>>', self.show_selected_table)
-        self.tables_treeview.pack()
-
-        self.upload_from_file_btn = ttk.Button(self.treeview_frame, text = 'Select file', command = self.select_file) #TODO command
-        self.upload_from_file_btn.pack(pady = 20, anchor = 'e')
-
-        self.tables_separator = ttk.Separator(self.main_frame, orient = 'vertical')
-        self.tables_separator.pack(side = tk.LEFT, fill = tk.Y, padx = (0,20))
-
-        self.tables_frame = ttk.Frame(self.main_frame)
-        self.tables_frame.pack(side = tk.LEFT, fill = tk.BOTH)
-        self.tables_frame.grid_rowconfigure(0, weight = 1)
-        self.tables_frame.grid_columnconfigure(0, weight = 1)
-
-        self.families_frm = ttk.Frame(self.tables_frame)
-        self.extruders_schedule_frm = ttk.Frame(self.tables_frame)
-        self.customer_frm = ttk.Frame(self.tables_frame)
-        self.product_priority_frm = ttk.Frame(self.tables_frame)
-
-        self.frames_dic = {'customer': self.customer_frm, 'product_priority': self.product_priority_frm, 'families': self.families_frm, 'extruders_schedule': self.extruders_schedule_frm}
-
-        # self.extruders_schedule_df = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
-        self.extruders_schedule_pt = CustomTable(self.extruders_schedule_frm, dataframe = extruders_schedule_df, showtoolbar = False, showstatusbar = False, editable = True)
-        self.extruders_schedule_pt.show()
-        self.extruders_schedule_frm.grid(row = 0, column = 0, sticky = 'nsew')
-
-        # self.families_df = pd.read_sql_table('families', schema = 'manual_files', con = connection_to_HANA)
-        self.families_pt = CustomTable(self.families_frm, dataframe = families_df, showtoolbar = False, showstatusbar = False, editable = True)
-        self.families_pt.show()
-        self.families_frm.grid(row = 0, column = 0, sticky = 'nsew')
-
-        # self.product_priority_df = pd.read_sql_table('product_priority', schema = 'manual_files', con = connection_to_HANA)
-        self.product_priority_pt = CustomTable(self.product_priority_frm, dataframe = product_priority_df, showtoolbar = False, showstatusbar = False, editable = True)
-        self.product_priority_pt.show()
-        self.product_priority_frm.grid(row = 0, column = 0, sticky = 'nsew')
-
-        # self.customer_df = pd.read_sql_table('customer_priority', schema = 'manual_files', con = connection_to_HANA)
-        self.customer_pt = CustomTable(self.customer_frm, dataframe = customer_df, showtoolbar = False, showstatusbar = False, editable = True)
-        self.customer_pt.show()
-        self.customer_frm.grid(row = 0, column = 0, sticky = 'nsew')
-
-    def show_selected_table(self, event):
-        selected_iid = event.widget.focus()
-        self.frames_dic[selected_iid].tkraise()
-        
-    def select_file(self):
-        # filename =  tk.filedialog.askopenfilename(initialdir = "/", title = "Select file", filetypes = (("jpeg files","*.jpg"),("all files","*.*")) )
-        filename =  tk.filedialog.askopenfilename(initialdir = "/", title = "Select file", filetypes = ((".csv files","*.csv"),("Excel sheet","*.xlsx")) )
-        selected_iid = self.tables_treeview.focus()
-        
 
 def run_experiment(experiment):
     subprocess.run(f'Model\CJFoods_windows-{experiment}.bat')
@@ -671,18 +532,19 @@ def startup():
     out_string = connectToHANA()
     statusbar.config(text = out_string)
     if connection_to_HANA:
+        add_manual_input_btn['state'] = 'normal'
         (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
         display_info_widget['state'] = 'normal'
         display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n\n')
         display_info_widget['state'] = 'disabled'
-        #Load manual tables
-        global extruders_schedule_df, families_df, product_priority_df, customer_df
-        extruders_schedule_df = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
-        families_df = pd.read_sql_table('families', schema = 'manual_files', con = connection_to_HANA)
-        product_priority_df = pd.read_sql_table('product_priority', schema = 'manual_files', con = connection_to_HANA)
-        customer_df = pd.read_sql_table('customer_priority', schema = 'manual_files', con = connection_to_HANA)
-
-        add_manual_input_btn['state'] = 'normal'
+        # #Load manual tables
+        # #TODO clean hardcoding        -----------
+        # global extruders_schedule_df, families_df, product_priority_df, customer_df
+        # extruders_schedule_df = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
+        # families_df = pd.read_sql_table('families', schema = 'manual_files', con = connection_to_HANA)
+        # product_priority_df = pd.read_sql_table('product_priority', schema = 'manual_files', con = connection_to_HANA)
+        # customer_df = pd.read_sql_table('customer_priority', schema = 'manual_files', con = connection_to_HANA)
+        # #--------------------------------------
 
 if __name__ == '__main__':
 
@@ -715,16 +577,17 @@ if __name__ == '__main__':
     read_data_frame = ttk.Frame(read_data_lf)
     read_data_frame.pack()
 
-    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from SAGE', command = lambda: threading.Thread(target = update_db_from_SAGE_command, daemon = True).start())
+    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from SAGE', command = lambda: update_db_from_SAGE_command())
     update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
 
-    generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
+    # generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
+    generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command())
     generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
     manual_input_lf = ttk.LabelFrame(buttons_frame, text = '2. Add Manual Input (optional)')
     manual_input_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
-    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables', command = lambda: threading.Thread(target = add_manual_input).start())
+    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables', command = lambda: add_manual_input())
     add_manual_input_btn.pack(padx = 10, pady = (15, 20), ipadx = 10, ipady = 2)
     add_manual_input_btn.state(['disabled'])
 
