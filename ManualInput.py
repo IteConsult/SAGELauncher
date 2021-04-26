@@ -43,6 +43,7 @@ class LoadingWindow(tk.Toplevel):
 class ManualInput(tk.Toplevel):
     def __init__(self, root, connection, **labels):     #table_name = table_label, por ejemplo: product_priority = 'Product priority'
         tk.Toplevel.__init__(self, root)
+        # self.state('zoomed')
         self.size = (900, 600)
         s_width = root.winfo_screenwidth()
         s_height = root.winfo_screenheight()
@@ -70,8 +71,11 @@ class ManualInput(tk.Toplevel):
         self.tables_separator = ttk.Separator(self.main_frame, orient = 'vertical')
         self.tables_separator.pack(side = tk.LEFT, fill = tk.Y, padx = (0,20))
 
-        self.tables_frame = ttk.Frame(self.main_frame)
-        self.tables_frame.pack(side = tk.LEFT, fill = tk.BOTH)
+        self.right_frame = ttk.Frame(self.main_frame)
+        self.right_frame.pack(side = tk.LEFT, fill = tk.Y, padx = (0,20), expand = True)
+
+        self.tables_frame = ttk.Frame(self.right_frame)
+        self.tables_frame.pack(fill = tk.BOTH, expand = True)
         self.tables_frame.grid_rowconfigure(1, weight = 1)
         self.tables_frame.grid_columnconfigure(0, weight = 1)
 
@@ -80,6 +84,9 @@ class ManualInput(tk.Toplevel):
         for table in labels:
             setattr(self, table+'_frm', TableFrame(self.tables_frame, table, 'manual_files', con = connection))
             self.frames_dic[table] = getattr(self, table+'_frm')
+            
+        self.button_frame = ttk.Button(self.right_frame, text = 'Replace table with local file', )
+        self.button_frame.pack(anchor = 'e', padx = 20, pady = 20)
 
     def show_selected_table(self, event):
         selected_iid = event.widget.focus()
@@ -98,7 +105,7 @@ class TableFrame(ttk.Frame):
         self.table_name = table_name
         self.table_schema = table_schema
         self.table = pd.read_sql_table(table_name.lower(), schema = table_schema, con = con)
-        self.pt = CustomTable(self, dataframe = self.table, showtoolbar = True, showstatusbar = True, editable = True)
+        self.pt = CustomTable(self, dataframe = self.table, showtoolbar = False, showstatusbar = False, editable = True)
         self.pt.adjustColumnWidths()
         self.pt.show()
         
