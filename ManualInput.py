@@ -43,6 +43,7 @@ class LoadingWindow(tk.Toplevel):
 class ManualInput(tk.Toplevel):
     def __init__(self, root, connection, **iid_labels):     #table_name = table_label, por ejemplo: product_priority = 'Product priority'
         tk.Toplevel.__init__(self, root)
+        self.title("Add Manual Input")
         self.connection = connection
         # self.state('zoomed')
         self.size = (900, 600)

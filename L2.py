@@ -521,13 +521,6 @@ def add_manual_input():
 def run_experiment(experiment):
     subprocess.run(f'Model\CJFoods_windows-{experiment}.bat')
 
-def save_outputs_command():
-    save_outputs_thread = threading.Thread(target = upload_output_to_hana, daemon = True)
-    save_outputs_thread.start()
-    save_outputs_pgb.start()
-    save_outputs_thread.join()
-    save_outputs_pgb.stop()
-
 def startup():
     out_string = connectToHANA()
     statusbar.config(text = out_string)
@@ -549,7 +542,9 @@ def startup():
 if __name__ == '__main__':
 
     root = tk.Tk()
-    root.title('Alphia Launcher')
+    root.title('ITE Consult Launcher')
+    root.iconbitmap(default = 'iteIcon.ico')
+    
     root.configure(bg = 'white')
     s = ttk.Style()
     root.state("zoomed")
@@ -577,7 +572,7 @@ if __name__ == '__main__':
     read_data_frame = ttk.Frame(read_data_lf)
     read_data_frame.pack()
 
-    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from SAGE', command = lambda: update_db_from_SAGE_command())
+    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from REST Services', command = lambda: update_db_from_SAGE_command())
     update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
 
     generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command())
@@ -620,11 +615,11 @@ if __name__ == '__main__':
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
     demand_review_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
-    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Unassigned WO',
+    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Schedule Review',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
     unassigned_wo_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
-    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Data Errors',
+    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Master Data Errors',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
     data_errors_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
@@ -641,7 +636,6 @@ if __name__ == '__main__':
     ax = fig.add_subplot(111)
     canvas = FigureCanvasTkAgg(fig, master = display_info_widget)
     canvas.draw()
-    #canvas.get_tk_widget().pack()
 
     threading.Thread(target = startup).start()
 

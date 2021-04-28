@@ -129,8 +129,6 @@ def inventory(bulk_inventory, extruders_df):
     return bulk_inventory_copy
 
 
-
-
 #creates packline output for SAC
 
 def packlines(schedule_sku, extruders_df):
