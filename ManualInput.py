@@ -41,8 +41,9 @@ class LoadingWindow(tk.Toplevel):
         connection_to_HANA = None
 
 class ManualInput(tk.Toplevel):
-    def __init__(self, root, connection, **labels):     #table_name = table_label, por ejemplo: product_priority = 'Product priority'
+    def __init__(self, root, connection, **iid_labels):     #table_name = table_label, por ejemplo: product_priority = 'Product priority'
         tk.Toplevel.__init__(self, root)
+        self.connection = connection
         # self.state('zoomed')
         self.size = (900, 600)
         s_width = root.winfo_screenwidth()
@@ -60,8 +61,8 @@ class ManualInput(tk.Toplevel):
 
         self.tables_treeview = ttk.Treeview(self.treeview_frame, selectmode = 'browse', height = 4)
         self.tables_treeview.heading("#0", text = "Select table", anchor = tk.W)
-        for table_name in labels:
-            self.tables_treeview.insert('', 0, iid = table_name.lower(), text = labels[table_name])
+        for table_name in iid_labels:
+            self.tables_treeview.insert('', 0, iid = table_name.lower(), text = iid_labels[table_name])
         self.tables_treeview.bind('<<TreeviewSelect>>', self.show_selected_table)
         self.tables_treeview.pack()
 
@@ -71,22 +72,23 @@ class ManualInput(tk.Toplevel):
         self.tables_separator = ttk.Separator(self.main_frame, orient = 'vertical')
         self.tables_separator.pack(side = tk.LEFT, fill = tk.Y, padx = (0,20))
 
-        self.right_frame = ttk.Frame(self.main_frame)
-        self.right_frame.pack(side = tk.LEFT, fill = tk.Y, padx = (0,20), expand = True)
-
-        self.tables_frame = ttk.Frame(self.right_frame)
-        self.tables_frame.pack(fill = tk.BOTH, expand = True)
+        self.tables_frame = ttk.Frame(self.main_frame)
+        self.tables_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
         self.tables_frame.grid_rowconfigure(1, weight = 1)
         self.tables_frame.grid_columnconfigure(0, weight = 1)
 
         self.frames_dic = {}
+        self.modified_tables = {}
 
-        for table in labels:
-            setattr(self, table+'_frm', TableFrame(self.tables_frame, table, 'manual_files', con = connection))
-            self.frames_dic[table] = getattr(self, table+'_frm')
-            
-        self.button_frame = ttk.Button(self.right_frame, text = 'Replace table with local file', )
-        self.button_frame.pack(anchor = 'e', padx = 20, pady = 20)
+        for iid in iid_labels:
+            setattr(self, iid+'_frm', TableFrame(self.tables_frame, iid, 'manual_files', con = connection))
+            self.frames_dic[iid] = getattr(self, iid+'_frm')
+
+        self.save_button = ttk.Button(self.tables_frame, text = 'Save', command = lambda: self.save_modifications())
+        self.save_button.grid(row = 1, sticky = 'sw', padx = 20, pady = 20, ipadx = 10)
+        
+        self.upload_button = ttk.Button(self.tables_frame, text = 'Replace table with local file', command = lambda: self.select_file())
+        self.upload_button.grid(row = 1, sticky = 'se', padx = 20, pady = 20, ipadx = 10)
 
     def show_selected_table(self, event):
         selected_iid = event.widget.focus()
@@ -94,13 +96,34 @@ class ManualInput(tk.Toplevel):
 
     def select_file(self):
         # filename =  tk.filedialog.askopenfilename(initialdir = "/", title = "Select file", filetypes = (("jpeg files","*.jpg"),("all files","*.*")) )
-        filename =  tk.filedialog.askopenfilename(initialdir = "/", title = "Select file", filetypes = (("Excel sheet","*.xlsx")) )
+        filename =  tk.filedialog.askopenfilename(initialdir = "/", title = "Select file", filetypes = (("Excel sheet","*.xlsx"),) )
+        if filename == '':
+            return
         selected_iid = self.tables_treeview.focus()
+        selected_pandastable = self.frames_dic[selected_iid].pt
+        selected_pandastable.model.df = pd.read_excel(filename).astype(str)
+        selected_pandastable.adjustColumnWidths()
+        selected_pandastable.redraw()
+        threading.Thread(target = self.upload_table, args = (selected_iid,)).start() 
+
+    def upload_table(self, iid):
+        table_frame = self.frames_dic[iid]
+        df = table_frame.pt.model.df
+        try:
+            self.connection.execute(f'DELETE FROM "{table_frame.table_schema.upper()}"."{iid.upper()}"')
+            df.to_sql(iid, schema = table_frame.table_schema, if_exists = 'append', con = self.connection, index = False)
+            print('Update succesful.')
+        except Exception as e:
+            print('Couldn\'t update table in HANA: ' + str(e))
+       
+    def save_modifications(self):
+        pass
         
 class TableFrame(ttk.Frame):
 
     def __init__(self, parent, table_name, table_schema, con):
         tk.Frame.__init__(self, parent)
+        self.con = con
         self.grid(row = 0, column = 0, sticky = 'nsew')
         self.table_name = table_name
         self.table_schema = table_schema

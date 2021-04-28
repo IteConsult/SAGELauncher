@@ -1,6 +1,7 @@
 import pandastable
 import tkinter as tk
 import math
+import pandas as pd
 
 def getTextLength(text, w, font=None):
 	"""Get correct canvas text size (chars) that will fit in \

@@ -580,7 +580,6 @@ if __name__ == '__main__':
     update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from SAGE', command = lambda: update_db_from_SAGE_command())
     update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
 
-    # generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: threading.Thread(target = generate_model_files_from_backup_command, daemon = True).start())
     generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command())
     generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 

@@ -12,7 +12,7 @@ table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
 for table in table_urls:
     try:
         globals()[table] = pd.read_json(table_urls[table], dtype = str)
-        globals()[table].to_excel(f'{table}.xlsx', index = False)
+        globals()[table].to_excel(f'REST_files/{table}.xlsx', index = False)
         print(f'Table {table} succesfully loaded.')
     except Exception as E:
         print('Couldn\'t load table: %s' % table)
