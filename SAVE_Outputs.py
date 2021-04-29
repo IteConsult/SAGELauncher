@@ -539,8 +539,10 @@ def upload_output_to_hana():
         try:
 
             #variables de run y process date
-            Run = table.loc[1,"Run"]
-            Process_Date = table.loc[1,"Process Date"]
+            # Run = table.loc[1,"Run"]
+            Run = table["Run"].iloc[0]
+            # Process_Date = table.loc[1,"Process Date"]
+            Process_Date = table["Process Date"].iloc[0]
 
             #execute sql to delete rows on database based on run and process date
             connection_to_HANA.execute(f"""DELETE FROM "SAC_OUTPUT".{table.name} WHERE "Process Date" = '{Process_Date}' and "Run" = '{Run}'""")
