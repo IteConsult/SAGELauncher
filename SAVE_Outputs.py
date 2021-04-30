@@ -278,7 +278,6 @@ def unified_sac(packlines_df, extruders_df, inventory_df, unpacked_df):
 #create WO demand planning of SAGE to create the unassigned workorders
 
 def wo_demand(itemmaster,workorders, extruders_df):
-    
     #create a copy
     ItemMaster_copy = itemmaster.copy()
     WorkOrders_copy = workorders.copy()
@@ -296,9 +295,9 @@ def wo_demand(itemmaster,workorders, extruders_df):
     merge = WorkOrders_copy.merge(ItemMaster_copy[['ItemNumber', 
                                                    'CategoryCode',
                                                    'ItemWeight'
-                                                   ]], 
+                                                   ]].groupby('ItemNumber').first(), 
                                                   on='ItemNumber',
-                                                  how = 'inner')
+                                                  how = 'left')
     
     
     #filter based on two conditions
@@ -309,10 +308,10 @@ def wo_demand(itemmaster,workorders, extruders_df):
     
     
     #planned - complete
-    merge['Demand'] = merge['PlannedQty'].astype(int) - merge['CompletedQty'].astype(int)
+    merge['Demand'] = merge['PlannedQty'].astype(float) - merge['CompletedQty'].astype(float)
 
     #multiply weight by plannedqty for FG
-    merge.loc[merge['CategoryCode'] == 'FG', 'Demand'] = merge['Demand'].astype(int) * merge['ItemWeight'].astype(float)
+    merge.loc[merge['CategoryCode'] == 'FG', 'Demand'] = merge['Demand'].astype(float) * merge['ItemWeight'].astype(float)
         
     #change data type
     merge['Demand'] = merge['Demand'].astype(int)
@@ -330,7 +329,7 @@ def wo_demand(itemmaster,workorders, extruders_df):
     #keep only dates
     merge["PlannedStart"] = merge["PlannedStart"].str.split("T", n = 1, expand = True)[0]
     merge["PlannedEnd"] = merge["PlannedEnd"].str.split("T", n = 1, expand = True)[0]
-    
+
     #drop columns
     merge.drop(['OrderStatus', 'Operation', 'ItemWeight', 'PlannedQty', 'CompletedQty'], axis=1, inplace = True)
     
@@ -521,16 +520,24 @@ def upload_output_to_hana():
     # variables for unified df 
 
     extruders_df = extruders(schedule_bulk)
+    # extruders_df.to_excel('extruders.xlsx', index = False)
     packlines_df = packlines(schedule_sku, extruders_df)
+    # packlines_df.to_excel('packlines.xlsx', index = False)
     unpacked_df = unpacked(out_due_date_backlog, extruders_df)
+    # unpacked_df.to_excel('unpacked.xlsx', index = False)
     inventory_df = inventory(bulk_inventory, extruders_df)
+    # inventory_df.to_excel('inventory.xlsx', index = False)
     wo_demand_df = wo_demand(itemmaster, workorders, extruders_df)
+    # wo_demand_df.to_excel('wo_demand.xlsx', index = False)
     unified_sac_df = unified_sac(packlines_df, extruders_df, inventory_df, unpacked_df)
+    # unified_sac_df.to_excel('unified_sac.xlsx', index = False)
 
     #variables for assigned wo
 
     group_extruders_df = group_extruders(extruders_df, inventory_df)
+    # group_extruders_df.to_excel('group_extruders.xlsx', index = False)
     assigned_wo_df = assigned_wo(group_extruders_df, wo_demand_df)
+    # assigned_wo_df.to_excel('assigned_wo.xlsx', index = False)
 
     lista_tablas_para_SAC = [assigned_wo_df, unified_sac_df, wo_demand_df]
     
