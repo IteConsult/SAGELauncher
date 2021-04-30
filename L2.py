@@ -504,11 +504,16 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     #5) WO Demand for SAC
     try:
         WO_DEMAND = generate_wo_demand(ItemMaster, WorkOrders)
-        connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
-        WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
     except Exception as e:
-        print('Failed to upload WO Demand table to HANA: ' + str(e))
+        print('Failed to generate WO Demand table: ' + str(e))
         return 1
+    else:
+        try:
+            connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
+            WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
+        except Exception as e:
+            print('Failed to upload WO Demand table to HANA: ' + str(e))
+            return 1
     
     #6) Save upload time info
     try:
