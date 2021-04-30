@@ -362,6 +362,55 @@ def generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, 
     INVENTORY_BULK = INVENTORY_BULK[['Component formula', 'Facility', 'Quantity']]
 
     return INVENTORY_BULK
+    
+def generate_wo_demand(ItemMaster, WorkOrders):
+    #Create a copy
+    ItemMaster_copy = ItemMaster.copy()
+    WorkOrders_copy = WorkOrdens.copy()
+    
+    #filter order status = 1 for Workorders
+    filter1 = WorkOrders_copy['OrderStatus'] == '1'
+    WorkOrders_copy = WorkOrders_copy[filter1]
+    #rename columns
+    WorkOrders_copy.rename(columns= {'Facility':'Facility Code',
+                                     'Purchase_Order':'Purchase Order',
+                                     'WorkCenter':'WorkCenter Code'} ,inplace=True)
+    #merge dataframes
+    merge = WorkOrders_copy.merge(ItemMaster_copy[['ItemNumber', 
+                                                   'CategoryCode',
+                                                   'ItemWeight'
+                                                   ]], 
+                                                  on='ItemNumber',
+                                                  how = 'inner')
+    #filter based on two conditions
+    merge = merge[
+                  ((merge["CategoryCode"]=="INT") & (merge["Operation"]=='20')) | 
+                  ((merge["CategoryCode"]=='FG') & (merge["Operation"]=='10'))
+                  ]
+    #planned - complete
+    merge['Demand'] = merge['PlannedQty'].astype(int) - merge['CompletedQty'].astype(int)
+    #multiply weight by plannedqty for FG
+    merge.loc[merge['CategoryCode'] == 'FG', 'Demand'] = merge['Demand'].astype(int) * merge['ItemWeight'].astype(float)
+    #change data type
+    merge['Demand'] = merge['Demand'].astype(int)
+    # 0 for negative numbers
+    merge.loc[merge['Demand'] < 0, 'Demand'] = 0 
+    #fill null values with 0
+    merge.fillna('0', inplace=True)
+    #run and process date
+    merge['Run'] = 1
+    merge['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
+    #keep only dates
+    merge["PlannedStart"] = merge["PlannedStart"].str.split("T", n = 1, expand = True)[0]
+    merge["PlannedEnd"] = merge["PlannedEnd"].str.split("T", n = 1, expand = True)[0]
+    #drop columns
+    merge.drop(['OrderStatus', 'Operation', 'ItemWeight', 'PlannedQty', 'CompletedQty'], axis=1, inplace = True)
+    #round decimals
+    merge = merge.round(1)
+    #name 
+    merge.name = "WO_DEMAND"
+    #return dataframe
+    return merge
 
 def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families):
 
@@ -451,7 +500,17 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         except Exception as e:
             print('Failed to upload Bulk inventory table to HANA: ' + str(e))
             return 1
-    #5) Save upload time info
+    
+    #5) WO Demand for SAC
+    try:
+        WO_DEMAND = generate_wo_demand(ItemMaster, WorkOrders)
+        connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
+        WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
+    except Exception as e:
+        print('Failed to upload WO Demand table to HANA: ' + str(e))
+        return 1
+    
+    #6) Save upload time info
     try:
         connection_to_HANA.execute('DELETE FROM "SAGE"."LOG"')
         time = pd.to_datetime(datetime.datetime.now())

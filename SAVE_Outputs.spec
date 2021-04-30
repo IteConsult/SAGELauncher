@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['SAVE_Outputs.py'],
-             pathex=['C:\\Users\\admin\\Documents\\GitHub\\SAGELauncher\\Launcher provisorio'],
+             pathex=['C:\\Users\\admin\\Documents\\GitHub\\SAGELauncher'],
              binaries=[],
              datas=[],
              hiddenimports=[],
@@ -30,4 +30,4 @@ exe = EXE(pyz,
           upx=True,
           upx_exclude=[],
           runtime_tmpdir=None,
-          console=True )
+          console=False )
