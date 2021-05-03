@@ -302,6 +302,7 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority,
     NOT_IN_PACKLINES['Cause'] = 'Finished good has no packing rate'
     NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
     DEMAND = DEMAND.query('in_packlines == True').copy()
+
     #TODO traer el Customer cuando lo manden los de Alphia
     DEMAND['Customer'] = 0
     #TODO traer la Formula cuando la manden los de Alphia
@@ -311,9 +312,11 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority,
     DEMAND['Inventory'] = 0
     #Bring Priority columns
     DEMAND = DEMAND.merge(Product_Priority, left_on = 'ItemNumber', right_on = 'Finished Good', how = 'left').drop('Finished Good', axis = 1)
-    DEMAND['Product Priority'].fillna(0, inplace = True)
-    DEMAND = DEMAND.merge(Customer_Priority, on = 'Customer', how = 'left')
-    DEMAND['Customer Priority'].fillna('0', inplace = True)
+    DEMAND['Product Priority'].fillna('0', inplace = True)
+    #--- Temp fix. Juli mira esto! daba error de merge int64 y object---
+    #DEMAND = DEMAND.merge(Customer_Priority, on = 'Customer', how = 'left')
+    #DEMAND['Customer Priority'].fillna('0', inplace = True)
+    DEMAND["Customer Priority"] = "0"
     DEMAND['Purchase order'] = 'missing'
     DEMAND['Entity'] = 'CJFoods'
     DEMAND['Sales order'] = 'missing'
@@ -366,7 +369,7 @@ def generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, 
 def generate_wo_demand(ItemMaster, WorkOrders):
     #Create a copy
     ItemMaster_copy = ItemMaster.copy()
-    WorkOrders_copy = WorkOrdens.copy()
+    WorkOrders_copy = WorkOrders.copy()
     
     #filter order status = 1 for Workorders
     filter1 = WorkOrders_copy['OrderStatus'] == '1'
@@ -388,11 +391,11 @@ def generate_wo_demand(ItemMaster, WorkOrders):
                   ((merge["CategoryCode"]=='FG') & (merge["Operation"]=='10'))
                   ]
     #planned - complete
-    merge['Demand'] = merge['PlannedQty'].astype(int) - merge['CompletedQty'].astype(int)
+    merge['Demand'] = merge['PlannedQty'].astype(float) - merge['CompletedQty'].astype(float)
     #multiply weight by plannedqty for FG
-    merge.loc[merge['CategoryCode'] == 'FG', 'Demand'] = merge['Demand'].astype(int) * merge['ItemWeight'].astype(float)
+    merge.loc[merge['CategoryCode'] == 'FG', 'Demand'] = merge['Demand'].astype(float) * merge['ItemWeight'].astype(float)
     #change data type
-    merge['Demand'] = merge['Demand'].astype(int)
+    merge['Demand'] = merge['Demand'].astype(float)
     # 0 for negative numbers
     merge.loc[merge['Demand'] < 0, 'Demand'] = 0 
     #fill null values with 0
