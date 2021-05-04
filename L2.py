@@ -20,6 +20,7 @@ from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationTool
 from webbrowser import open as webopen
 from CustomTable import CustomTable
 from ManualInput import ManualInput, LoadingWindow
+import traceback
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
@@ -40,7 +41,7 @@ def connectToHANA():
             print('Connection to cloud database established.')
             return 'Connection succesful.'
         except Exception as e:
-            print('Connection failed! ' + str(e))
+            print('Connection failed!\n' + traceback.format_exc())
             return 'Connection to cloud database failed!'
 
 def update_db_from_SAGE(loading_window):
@@ -50,7 +51,7 @@ def update_db_from_SAGE(loading_window):
     try:
         connectToHANA()
     except:
-        print('Couldn\'t connect to database!') #TODO add warning message
+        print('Couldn\'t connect to database!' + traceback.format_exc()) #TODO add warning message
         return 1
 
     table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
@@ -68,8 +69,8 @@ def update_db_from_SAGE(loading_window):
                 globals()[table] = pd.read_json(table_urls[table], dtype = str)
                 print(f'Table {table} succesfully loaded.')
             except Exception as e:
-                print(f'Couldn\'t load table {table}: ' + str(e))
-                loading_window.destroy()
+                print(f'Couldn\'t load table {table}: ' + traceback.format_exc())
+                #loading_window.destroy()
                 return 1
                 #try to read backup from HANA?
         else:
@@ -82,8 +83,8 @@ def update_db_from_SAGE(loading_window):
             globals()[table].to_sql(table.lower(), con = connection_to_HANA, if_exists = 'append', index = False, schema = 'sage')
             print(f'Table {table} was uploaded to HANA succesfully.')
         except Exception as e:
-            print(f'Couldn\'t save {table} table into HANA. ' + str(e))
-            loading_window.destroy()
+            print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
+            #loading_window.destroy()
             return 1
 
     #Read manual files from HANA
@@ -94,8 +95,8 @@ def update_db_from_SAGE(loading_window):
             globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
             print(f'Table {table} succesfully read from HANA.')
         except Exception as e:
-            print('Couldn\'t read table {table} from HANA. ' + str(e))
-            loading_window.destroy()
+            print('Couldn\'t read table {table} from HANA. ' + traceback.format_exc())
+            #loading_window.destroy()
             return 1
 
     s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters,
@@ -103,7 +104,7 @@ def update_db_from_SAGE(loading_window):
 
     print(f'generate_model_files_from_backup function finished with code {s_code}.')
 
-    loading_window.destroy()
+    #loading_window.destroy()
     return s_code
 
 def generate_model_files_from_backup(loading_window):
@@ -114,7 +115,7 @@ def generate_model_files_from_backup(loading_window):
         connectToHANA()
     except:
         print('Couldn\'t connect to database!') #TODO add warning message
-        loading_window.destroy()
+        #loading_window.destroy()
         return 1
 
     tables = ['BOM', 'Inventory', 'Facility', 'ItemMaster', 'RoutingAndRates', 'WorkCenters', 'WorkOrders']
@@ -125,8 +126,8 @@ def generate_model_files_from_backup(loading_window):
             globals()[table] = pd.read_sql_table(table.lower(), schema = 'sage', con = connection_to_HANA).astype(str)
             print(f'Table {table} succesfully read from HANA.')
         except Exception as e:
-            print(f'Couldn\'t read table {table} from HANA. ' + str(e))
-            loading_window.destroy()
+            print(f'Couldn\'t read table {table} from HANA. ' + traceback.format_exc())
+            #loading_window.destroy()
             return 1
 
     #Read manual files from HANA
@@ -137,13 +138,13 @@ def generate_model_files_from_backup(loading_window):
             globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection_to_HANA).astype(str)
             print(f'Table {table} sucesfully read from HANA.')
         except:
-            print(f'Couldn\'t read {table} from HANA.' + str(e))
-            loading_window.destroy()
+            print(f'Couldn\'t read {table} from HANA.' + traceback.format_exc())
+            ##loading_window.destroy()
             return 1
 
     s_code = generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families)
 
-    loading_window.destroy()
+    ##loading_window.destroy()
     print(f'generate_model_files_from_backup function finished with code {s_code}.')
 
     return s_code
@@ -382,7 +383,7 @@ def generate_wo_demand(ItemMaster, WorkOrders):
     merge = WorkOrders_copy.merge(ItemMaster_copy[['ItemNumber', 
                                                    'CategoryCode',
                                                    'ItemWeight'
-                                                   ]], 
+                                                   ]].groupby('ItemNumber').first(), 
                                                   on='ItemNumber',
                                                   how = 'inner')
     #filter based on two conditions
@@ -424,7 +425,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         BREAKOUT = generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good, Families)
         print('Breakout table succesfully generated.')
     except Exception as e:
-        print('Failed to generate Breakout table: ' + str(e))
+        print('Failed to generate Breakout table: ' + traceback.format_exc())
         return 1
     else:
         try:
@@ -433,7 +434,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
             print('Breakout table succesfully uploaded to HANA.')
         except Exception as e:
-            print('Failed to upload Breakout table to HANA: ' + str(e))
+            print('Failed to upload Breakout table to HANA: ' + traceback.format_exc())
             return 1
 
     #2) Packlines and extruders
@@ -441,7 +442,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         PACKLINES, EXTRUDERS = generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility, Finished_Good)
         print('Packlines and Extruders tables succesfully generated.')
     except Exception as e:
-        print('Failed to generate Packlines and Extruders tables: ' + str(e))
+        print('Failed to generate Packlines and Extruders tables: ' + traceback.format_exc())
         return 1
     else:
         try:
@@ -450,7 +451,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             PACKLINES.to_sql('packlines', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
             print('Packlines table succesfully uploaded to HANA.')
         except Exception as e:
-            print('Failed to upload Packlines table to HANA: ' + str(e))
+            print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
             return 1
         try:
             connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
@@ -458,7 +459,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = connection_to_HANA, if_exists ='append', index = False)
             print('Extruders table succesfully uploaded to HANA.')
         except Exception as e:
-            print('Failed to upload Extruders table to HANA: ' + str(e))
+            print('Failed to upload Extruders table to HANA: ' + traceback.format_exc())
             return 1
 
     #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
@@ -467,7 +468,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         DEMAND, ERROR_DEMAND = generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority, Customer_Priority, BREAKOUT, PACKLINES, EXTRUDERS)
         print('Demand table succesfully generated.')
     except Exception as e:
-        print('Failed to generate Demand table: ' + str(e))
+        print('Failed to generate Demand table: ' + traceback.format_exc())
         return 1
     else:
         try:
@@ -476,7 +477,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             print('Demand table succesfully uploaded to HANA.')
             # DEMAND.to_excel('Demand.xlsx', index = False)
         except Exception as e:
-            print('Failed to upload Demand table to HANA: ' + str(e))
+            print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
             return 1
         try:
             connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
@@ -484,7 +485,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             print('Error demand table succesfully uploaded to HANA.')
             #ERROR_DEMAND.to_excel('ERROR_DEMAND.xlsx', index = False)
         except Exception as e:
-            print('Failed to upload Error demand table to HANA: ' + str(e))
+            print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
             return 1
 
     #4) Inventory bulk (must be created after Demand in order to validate)
@@ -492,7 +493,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         INVENTORY_BULK = generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, DEMAND, BREAKOUT)
         print('Bulk inventory table succesfully generated.')
     except Exception as e:
-        print('Failed to generate Inventory bulk table: ' + str(e))
+        print('Failed to generate Inventory bulk table: ' + traceback.format_exc())
         return 1
     else:
         try:
@@ -501,21 +502,21 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
             INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = connection_to_HANA, if_exists = 'append', index = False)
             print('Bulk inventory table succesfully uploaded to HANA.')
         except Exception as e:
-            print('Failed to upload Bulk inventory table to HANA: ' + str(e))
+            print('Failed to upload Bulk inventory table to HANA: ' + traceback.format_exc())
             return 1
     
     #5) WO Demand for SAC
     try:
         WO_DEMAND = generate_wo_demand(ItemMaster, WorkOrders)
     except Exception as e:
-        print('Failed to generate WO Demand table: ' + str(e))
+        print('Failed to generate WO Demand table: ' + traceback.format_exc())
         return 1
     else:
         try:
             connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
             WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection_to_HANA, if_exists = 'append', index = False)
         except Exception as e:
-            print('Failed to upload WO Demand table to HANA: ' + str(e))
+            print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
             return 1
     
     #6) Save upload time info
@@ -526,10 +527,10 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
         print('Updated backup time successfully.')
         display_info_widget['state'] = 'normal'
-        display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n')
+        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n')
         display_info_widget['state'] = 'disabled'
     except Exception as e:
-        print('Failed to update backup time: ' + str(e))
+        print('Failed to update backup time: ' + traceback.format_exc())
 
     if to_excel:
         dic = {'BREAKOUT': 'Breakout_file.xlsx',
@@ -551,11 +552,11 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         except:
             print('Couldn\'t save to Excel.')
 
-    display_info(DEMAND)
+    display_info(DEMAND, ERROR_DEMAND)
 
     return 0
 
-def display_info(DEMAND):
+def display_info(DEMAND, ERROR_DEMAND):
     df = DEMAND.copy()
     df['Due date'] = pd.to_datetime(df['Due date'])
     df = df[['Due date', 'Demand quantity (pounds)', 'Facility']].groupby(['Due date', 'Facility']).sum()
@@ -572,6 +573,11 @@ def display_info(DEMAND):
     fig.canvas.draw_idle()
     # canvas.get_tk_widget().pack(anchor = 'w')
     display_info_widget.window_create('end', window = canvas.get_tk_widget())
+    
+    error_demand_pt = CustomTable(error_demand_lf, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
+    error_demand_pt.adjustColumnWidths()
+    error_demand_pt.show()
+    # error_demand_pt.draw_idle() #TODO no funciona
 
 def update_db_from_SAGE_command():
     loading_window_from_SAGE = LoadingWindow(root, update_db_from_SAGE)
@@ -595,7 +601,7 @@ def startup():
         add_manual_input_btn['state'] = 'normal'
         (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
         display_info_widget['state'] = 'normal'
-        display_info_widget.insert('end', f'Last time updated: {time}\n    Total demand quantity: {total_demand}\n\n')
+        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n')
         display_info_widget['state'] = 'disabled'
         # #Load manual tables
         # #TODO clean hardcoding        -----------
@@ -693,11 +699,23 @@ if __name__ == '__main__':
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
 
-    display_info_widget = tk.Text(root, wrap = 'word', state = 'disabled', relief = tk.SUNKEN, bg = 'white')
-    display_info_widget.pack(side = tk.LEFT, expand = True, fill = tk.BOTH, padx = (20,0))
-    display_info_ys = ttk.Scrollbar(root, orient = 'vertical', command = display_info_widget.yview)
+    right_frame = ttk.Frame(root)
+    right_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
+
+    demand_info_lf = ttk.LabelFrame(right_frame, text = '   Demand Info')
+    demand_info_lf.pack(fill = tk.X, padx = 15, pady = (15,0))
+
+    display_info_frm = ttk.Frame(demand_info_lf)
+    display_info_frm.pack(fill = tk.X, expand = True, padx = 0, pady = (15,0))
+
+    display_info_widget = tk.Text(display_info_frm, wrap = 'word', state = 'disabled', relief = tk.FLAT, bg = 'white')
+    display_info_widget.pack(fill = tk.X, expand = True, side = tk.LEFT, padx = (20, 0))
+    display_info_ys = ttk.Scrollbar(display_info_frm, orient = 'vertical', command = display_info_widget.yview)
     display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
     display_info_widget['yscrollcommand'] = display_info_ys.set
+
+    error_demand_lf = ttk.LabelFrame(right_frame, text = '  Error Demand')
+    error_demand_lf.pack(fill = tk.BOTH, expand = True, padx = 15, pady = 15)
 
     fig = Figure()
     ax = fig.add_subplot(111)

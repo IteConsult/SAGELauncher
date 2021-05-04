@@ -8,10 +8,12 @@ class LoadingWindow(tk.Toplevel):
     def __init__(self, parent, command = None):
         self.size = (300, 80)
         tk.Toplevel.__init__(self, parent)
+        self.transient(parent)
         s_width = parent.winfo_screenwidth()
         s_height = parent.winfo_screenheight()
         self.screen_position = lambda width, height: (width, height, (s_width - width)//2, (s_height - height)//2)
         self.geometry('%dx%d+%d+%d' % self.screen_position(*self.size))
+        self.resizable(0, 0)
         self.wm_protocol("WM_DELETE_WINDOW", lambda: self.close_window())
         self.title('Please wait...')
         self.loading_frame = ttk.Frame(self, style = 'LoadingWindow.TFrame')
@@ -25,12 +27,18 @@ class LoadingWindow(tk.Toplevel):
         self.cancel_btn.pack(side = tk.BOTTOM, padx = 10, pady = (10,10), anchor = 'e')
         self.grab_set()
         self.focus_force()
-        self.resizable(0, 0)
-        self.transient(parent)
         self.thread = threading.Thread(target = command, args = (self,), daemon = True)
         self.thread.start()
+        self.master.after(100, self.wait_thread)
         # self.thread.join()
         # self.destroy()
+        
+    def wait_thread(self):
+        if self.thread.is_alive():
+            self.master.after(100, self.wait_thread)
+        else:
+            #TODO show info
+            self.destroy()
 
     def close_window(self):
         global connection_to_HANA
