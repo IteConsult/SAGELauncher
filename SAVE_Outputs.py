@@ -316,14 +316,14 @@ def wo_demand(itemmaster,workorders, extruders_df):
     #change data type
     merge['Demand'] = merge['Demand'].astype(int)
     
-    # # 0 for negative numbers
-    # merge.loc[merge['Demand'] < 0, 'Demand'] = 0
+    # 0 for negative numbers
+    merge.loc[merge['Demand'] < 0, 'Demand'] = 0
     
     #fill null values with 0
     merge.fillna('0', inplace=True)
 
     #Filter negative and 0 demand
-    merge = merge['Demand'] > 0
+    merge = merge[merge['Demand'] > 0]
     
     #run and process date
     merge['Run'] = extruders_df.loc[0,"Run"]

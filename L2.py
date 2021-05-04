@@ -154,7 +154,7 @@ def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Goo
     BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
     BREAKOUT.dropna(subset = ['ItemWeight', 'BagWeight'], inplace = True)
     #Try to keep BOM from DefaultFacility if possible
-    AVAILABLE_PLANT = BREAKOUT[['ItemNumber', 'Facility', 'Default]].groupby('ItemNumber')
+    # AVAILABLE_PLANTS = BREAKOUT[['ItemNumber', 'Facility', 'Default']].groupby('ItemNumber')
     BREAKOUT = BREAKOUT.query('Facility == DefaultFacility')
     #Filter Bomcodes according to Facility
     bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
@@ -399,6 +399,8 @@ def generate_wo_demand(ItemMaster, WorkOrders):
     merge.loc[merge['Demand'] < 0, 'Demand'] = 0 
     #fill null values with 0
     merge.fillna('0', inplace=True)
+    #Filter negative and 0 demand
+    merge = merge[merge['Demand'] > 0]
     #run and process date
     merge['Run'] = 1
     merge['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
