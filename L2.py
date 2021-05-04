@@ -153,15 +153,19 @@ def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Goo
     #Merging with ItemMaster
     BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
     BREAKOUT.dropna(subset = ['ItemWeight', 'BagWeight'], inplace = True)
-    #Try to keep BOM from DefaultFacility if possible
-    # AVAILABLE_PLANTS = BREAKOUT[['ItemNumber', 'Facility', 'Default']].groupby('ItemNumber')
-    BREAKOUT = BREAKOUT.query('Facility == DefaultFacility')
-    #Filter Bomcodes according to Facility
-    bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
-    bom_filter = BREAKOUT['BomCode'] == BREAKOUT['DefaultFacility'].map(bomcode_table)
-    BREAKOUT = BREAKOUT[bom_filter]
     #Keep FG items only
     BREAKOUT = BREAKOUT.query('CategoryCode == "FG"').drop('CategoryCode', axis = 1)
+    #Try to keep BOM from DefaultFacility if possible
+    AVAILABLE_PLANTS = BREAKOUT[['ItemNumber', 'Facility', 'DefaultFacility']].drop_duplicates()
+    AVAILABLE_PLANTS['has_default_facility'] = np.where(AVAILABLE_PLANTS['Facility'] == AVAILABLE_PLANTS['DefaultFacility'], True, False)
+    AVAILABLE_PLANTS = AVAILABLE_PLANTS.groupby('ItemNumber', as_index = False).agg({'Facility': 'first', 'DefaultFacility': 'first', 'has_default_facility': 'any'})
+    AVAILABLE_PLANTS['BOMFacility'] = np.where(AVAILABLE_PLANTS['has_default_facility'], AVAILABLE_PLANTS['DefaultFacility'], AVAILABLE_PLANTS['Facility'])
+    BREAKOUT = BREAKOUT.merge(AVAILABLE_PLANTS[['ItemNumber', 'BOMFacility']], on = 'ItemNumber', how = 'left')
+    BREAKOUT = BREAKOUT.query('Facility == BOMFacility')
+    #Filter Bomcodes according to Facility
+    bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
+    bom_filter = BREAKOUT['BomCode'] == BREAKOUT['Facility'].map(bomcode_table)
+    BREAKOUT = BREAKOUT[bom_filter]
     #Second merging with ItemMaster to keep only 'INT' category component items
     BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'CategoryCode']].groupby('ItemNumber').first(), left_on = 'ComponentItemNumber', right_on = 'ItemNumber', suffixes = ['','_y'])
     BREAKOUT = BREAKOUT.query('CategoryCode == "INT"').drop('CategoryCode', axis = 1)
@@ -171,7 +175,7 @@ def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Goo
     BREAKOUT['BlendPercentage'] = BREAKOUT['Quantity']/BREAKOUT['BlendPercentage']
     #Weight is BagSize
     BREAKOUT.rename({'BagWeight': 'Weight'}, axis = 1, inplace = True)
-    BREAKOUT['Weight'] = BREAKOUT['Weight'].astype(float)
+    BREAKOUT['Weight'] = BREAKOUT['Weight'].astype(float).round(2)
     #Bring Family column
     BREAKOUT = BREAKOUT.merge(Families, left_on = 'ItemNumber', right_on = 'Finished Good', how = 'left').drop('Finished Good', axis = 1)
     BREAKOUT['Family'].fillna('NONE', inplace = True)
@@ -534,12 +538,12 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         print('Failed to update backup time: ' + traceback.format_exc())
 
     if to_excel:
-        dic = {'BREAKOUT': 'Breakout_file.xlsx',
-            'PACKLINES': 'Packlines.xlsx',
-            'EXTRUDERS': 'Extruders.xlsx'}
+        dic = {'BREAKOUT': ('Breakout_file.xlsx', 'Breakout'),
+            'PACKLINES': ('Packlines.xlsx', 'Packlines'),
+            'EXTRUDERS': ('Extruders.xlsx', 'Extruders')}
         for table in dic:
             try:
-                locals()[table].to_excel(dic[table], index = False)
+                locals()[table].to_excel(dic[table][0], sheet_name = dic[table][1], index = False)
                 print(f'{table} saved to Excel.')
             except:
                 print('Couldn\'t save table.')
