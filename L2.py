@@ -303,9 +303,8 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority,
     NOT_IN_PACKLINES['Cause'] = 'Finished good has no packing rate'
     NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
     DEMAND = DEMAND.query('in_packlines == True').copy()
-
     #TODO traer el Customer cuando lo manden los de Alphia
-    DEMAND['Customer'] = 0
+    DEMAND['Customer'] = '0'
     #TODO traer la Formula cuando la manden los de Alphia
     DEMAND['Formula'] = 0
     DEMAND['Due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
@@ -314,9 +313,8 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority,
     #Bring Priority columns
     DEMAND = DEMAND.merge(Product_Priority, left_on = 'ItemNumber', right_on = 'Finished Good', how = 'left').drop('Finished Good', axis = 1)
     DEMAND['Product Priority'].fillna('0', inplace = True)
-    #--- Temp fix. Juli mira esto! daba error de merge int64 y object---
-    #DEMAND = DEMAND.merge(Customer_Priority, on = 'Customer', how = 'left')
-    #DEMAND['Customer Priority'].fillna('0', inplace = True)
+    DEMAND = DEMAND.merge(Customer_Priority, on = 'Customer', how = 'left')
+    DEMAND['Customer Priority'].fillna('0', inplace = True)
     DEMAND["Customer Priority"] = "0"
     DEMAND['Purchase order'] = 'missing'
     DEMAND['Entity'] = 'CJFoods'
@@ -416,7 +414,8 @@ def generate_wo_demand(ItemMaster, WorkOrders):
     #return dataframe
     return merge
 
-def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families):
+def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, 
+                                    WorkCenters, MD_Bulk_Code, Finished_Good, Families):
 
     #Model files generation and uploading
 
@@ -638,6 +637,8 @@ if __name__ == '__main__':
     buttons_frame = ttk.Frame(root, width = 270)
     buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10, fill = tk.Y)
     buttons_frame.pack_propagate(0)
+    
+    logo_canvas = tk.Canvas(buttons_frame)
 
     read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Select Data Source')
     read_data_lf.pack(fill = tk.X, padx = 10, pady = 10)
@@ -702,7 +703,7 @@ if __name__ == '__main__':
     right_frame = ttk.Frame(root)
     right_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
 
-    demand_info_lf = ttk.LabelFrame(right_frame, text = '   Demand Info')
+    demand_info_lf = ttk.LabelFrame(right_frame, text = '    Demand Info')
     demand_info_lf.pack(fill = tk.X, padx = 15, pady = (15,0))
 
     display_info_frm = ttk.Frame(demand_info_lf)
@@ -714,7 +715,7 @@ if __name__ == '__main__':
     display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
     display_info_widget['yscrollcommand'] = display_info_ys.set
 
-    error_demand_lf = ttk.LabelFrame(right_frame, text = '  Error Demand')
+    error_demand_lf = ttk.LabelFrame(right_frame, text = '    Error Demand')
     error_demand_lf.pack(fill = tk.BOTH, expand = True, padx = 15, pady = 15)
 
     fig = Figure()
