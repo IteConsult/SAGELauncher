@@ -153,7 +153,8 @@ def generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Goo
     #Merging with ItemMaster
     BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
     BREAKOUT.dropna(subset = ['ItemWeight', 'BagWeight'], inplace = True)
-    #Keep only BOM from DefaultFacility
+    #Try to keep BOM from DefaultFacility if possible
+    AVAILABLE_PLANT = BREAKOUT[['ItemNumber', 'Facility', 'Default]].groupby('ItemNumber')
     BREAKOUT = BREAKOUT.query('Facility == DefaultFacility')
     #Filter Bomcodes according to Facility
     bomcode_table = {'20001': '20', '20006': '45', '20005': '40'}
@@ -315,7 +316,6 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority,
     DEMAND['Product Priority'].fillna('0', inplace = True)
     DEMAND = DEMAND.merge(Customer_Priority, on = 'Customer', how = 'left')
     DEMAND['Customer Priority'].fillna('0', inplace = True)
-    DEMAND["Customer Priority"] = "0"
     DEMAND['Purchase order'] = 'missing'
     DEMAND['Entity'] = 'CJFoods'
     DEMAND['Sales order'] = 'missing'
@@ -526,7 +526,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
         print('Updated backup time successfully.')
         display_info_widget['state'] = 'normal'
-        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n')
+        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n\n')
         display_info_widget['state'] = 'disabled'
     except Exception as e:
         print('Failed to update backup time: ' + traceback.format_exc())
@@ -600,7 +600,7 @@ def startup():
         add_manual_input_btn['state'] = 'normal'
         (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
         display_info_widget['state'] = 'normal'
-        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n')
+        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n\n')
         display_info_widget['state'] = 'disabled'
         # #Load manual tables
         # #TODO clean hardcoding        -----------
