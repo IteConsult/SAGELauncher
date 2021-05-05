@@ -279,7 +279,7 @@ def generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority,
     DEMAND = DEMAND.query('CategoryCode == "FG"').copy()
     #Calculate demand in pounds and keep those with positive demand
     DEMAND = DEMAND.astype({'PlannedQty': float, 'CompletedQty': float, 'ItemWeight': float})
-    DEMAND['Demand quantity (pounds)'] = (DEMAND['PlannedQty'] - DEMAND['CompletedQty'])*DEMAND['ItemWeight']
+    DEMAND['Demand quantity (pounds)'] = round((DEMAND['PlannedQty'] - DEMAND['CompletedQty'])*DEMAND['ItemWeight'])
     DEMAND = DEMAND[DEMAND['Demand quantity (pounds)'] > 0]
     #Filter items not in Brekaout
     DEMAND['in_breakout'] = DEMAND['ItemNumber'].isin(BREAKOUT['Finished good'].values)
@@ -732,6 +732,3 @@ if __name__ == '__main__':
     threading.Thread(target = startup).start()
 
     root.mainloop()
-
-if connection_to_HANA:
-    connection_to_HANA.close()
