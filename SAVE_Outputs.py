@@ -4,6 +4,8 @@ import sqlalchemy_hana
 import sqlalchemy_hana.dialect
 import datetime
 
+to_excel = False
+
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
 def connectToHANA():
@@ -523,24 +525,26 @@ def upload_output_to_hana():
     # variables for unified df 
 
     extruders_df = extruders(schedule_bulk)
-    # extruders_df.to_excel('extruders.xlsx', index = False)
     packlines_df = packlines(schedule_sku, extruders_df)
-    # packlines_df.to_excel('packlines.xlsx', index = False)
     unpacked_df = unpacked(out_due_date_backlog, extruders_df)
-    # unpacked_df.to_excel('unpacked.xlsx', index = False)
     inventory_df = inventory(bulk_inventory, extruders_df)
-    # inventory_df.to_excel('inventory.xlsx', index = False)
     wo_demand_df = wo_demand(itemmaster, workorders, extruders_df)
-    # wo_demand_df.to_excel('wo_demand.xlsx', index = False)
     unified_sac_df = unified_sac(packlines_df, extruders_df, inventory_df, unpacked_df)
-    # unified_sac_df.to_excel('unified_sac.xlsx', index = False)
 
     #variables for assigned wo
 
     group_extruders_df = group_extruders(extruders_df, inventory_df)
-    # group_extruders_df.to_excel('group_extruders.xlsx', index = False)
     assigned_wo_df = assigned_wo(group_extruders_df, wo_demand_df)
-    # assigned_wo_df.to_excel('assigned_wo.xlsx', index = False)
+    
+    if to_excel:
+        extruders_df.to_excel('SAC_Output/extruders.xlsx', index = False)
+        packlines_df.to_excel('SAC_Output/packlines.xlsx', index = False)
+        unpacked_df.to_excel('SAC_Output/unpacked.xlsx', index = False)
+        inventory_df.to_excel('SAC_Output/inventory.xlsx', index = False)
+        wo_demand_df.to_excel('SAC_Output/wo_demand.xlsx', index = False)
+        unified_sac_df.to_excel('SAC_Output/unified_sac.xlsx', index = False)
+        group_extruders_df.to_excel('SAC_Output/group_extruders.xlsx', index = False)
+        assigned_wo_df.to_excel('SAC_Output/assigned_wo.xlsx', index = False)
 
     lista_tablas_para_SAC = [assigned_wo_df, unified_sac_df, wo_demand_df]
     

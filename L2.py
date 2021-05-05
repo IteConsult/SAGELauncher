@@ -26,7 +26,7 @@ import traceback
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
 #Debug variable
-to_excel = False
+to_excel = True
 #Global variables
 connection_to_HANA = None
 DEMAND = pd.DataFrame()
@@ -538,9 +538,9 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         print('Failed to update backup time: ' + traceback.format_exc())
 
     if to_excel:
-        dic = {'BREAKOUT': ('Breakout_file.xlsx', 'Breakout'),
-            'PACKLINES': ('Packlines.xlsx', 'Packlines'),
-            'EXTRUDERS': ('Extruders.xlsx', 'Extruders')}
+        dic = {'BREAKOUT': ('DBInput/Breakout_file.xlsx', 'Breakout'),
+            'PACKLINES': ('DBInput/Packlines.xlsx', 'Packlines'),
+            'EXTRUDERS': ('DBInput/Extruders.xlsx', 'Extruders')}
         for table in dic:
             try:
                 locals()[table].to_excel(dic[table][0], sheet_name = dic[table][1], index = False)
@@ -549,7 +549,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
                 print('Couldn\'t save table.')
         EXTRUDERS_SCHEDULE = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
         try:
-            with pd.ExcelWriter('Demand.xlsx') as writer:
+            with pd.ExcelWriter('DBInput/Demand.xlsx') as writer:
                 DEMAND.to_excel(writer, sheet_name = 'Demand', index = False)
                 INVENTORY_BULK.to_excel(writer, sheet_name = 'Bulk Inventory', index = False)
                 EXTRUDERS_SCHEDULE.to_excel(writer, sheet_name = 'Extruders Schedule', index = False)
