@@ -5,7 +5,7 @@
 #*Run optimization
 #*Save outputs
 
-import time
+import time as time_module
 import subprocess
 import tkinter as tk
 from tkinter import ttk
@@ -21,6 +21,8 @@ from webbrowser import open as webopen
 from CustomTable import CustomTable
 from ManualInput import ManualInput, LoadingWindow
 import traceback
+import seaborn as sns
+from PIL import (Image, ImageTk)
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
@@ -41,17 +43,15 @@ def connectToHANA():
             print('Connection to cloud database established.')
             return 'Connection succesful.'
         except Exception as e:
-            print('Connection failed!\n' + traceback.format_exc())
-            return 'Connection to cloud database failed!'
+            print('Connection failed!\n' + str(e))
+            return 'Connection to cloud database failed! Retrying...'
 
 def update_db_from_SAGE(loading_window):
     print('update_db_from_SAGE function called.')
 
     #Connect to HANA
-    try:
-        connectToHANA()
-    except:
-        print('Couldn\'t connect to database!' + traceback.format_exc()) #TODO add warning message
+    if not connection_to_HANA:
+        print('Can\'t connect to database.')
         return 1
 
     table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
@@ -111,11 +111,8 @@ def generate_model_files_from_backup(loading_window):
     print('generate_model_files_from_backup function called.')
 
     #Connect to HANA
-    try:
-        connectToHANA()
-    except:
-        print('Couldn\'t connect to database!') #TODO add warning message
-        #loading_window.destroy()
+    if not connection_to_HANA:
+        print('Can\'t connect to database.')
         return 1
 
     tables = ['BOM', 'Inventory', 'Facility', 'ItemMaster', 'RoutingAndRates', 'WorkCenters', 'WorkOrders']
@@ -564,20 +561,36 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
 def display_info(DEMAND, ERROR_DEMAND):
     df = DEMAND.copy()
     df['Due date'] = pd.to_datetime(df['Due date'])
-    df = df[['Due date', 'Demand quantity (pounds)', 'Facility']].groupby(['Due date', 'Facility']).sum()
-    df = df.unstack(fill_value = 0)
-    df = df.droplevel(0, axis = 1)
-    df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
-    df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
-    df = df.groupby('Week start').sum()
+    # df = df[['Due date', 'Demand quantity (pounds)', 'Facility']].groupby(['Due date', 'Facility']).sum()
+    # df = df.unstack(fill_value = 0)
+    # df = df.droplevel(0, axis = 1)
+    # df['Week start'] = df.index.map(lambda x: x - datetime.timedelta(x.weekday()))
+    # df = df.groupby('Week start').sum()  
+    # a = df.cumsum().plot(kind = 'bar', ax = ax)
+    # ax.xaxis_date()
+    # a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
+    # x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
+    # ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
+    # a.set_ylabel('Pounds (in millions)')
+    
+    df = df[['Due date', 'Demand quantity (pounds)']]
+    df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
+    df = df.groupby('Week start', as_index = False).sum()
+    print(df)
 
-    a = df.cumsum().plot(kind = 'area', ax = ax)
-    a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
-    a.set_ylabel('Pounds (in millions)')
+    # a = df.plot(x = 'Week start', y = 'Demand quantity (pounds)', kind = 'bar', ax = ax)
+    plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
+                  estimator = sum, ci = None, ax = ax)
+    ax.xaxis_date()
+    # a.ticklabel_format(axis = 'y', style = 'sci', scilimits = (6,6))
+    x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
+    ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
+    # a.set_ylabel('Pounds (in millions)')
 
     fig.canvas.draw_idle()
     # canvas.get_tk_widget().pack(anchor = 'w')
     display_info_widget.window_create('end', window = canvas.get_tk_widget())
+    display_info_widget.insert('end', '\n\n\n')
     
     error_demand_pt = CustomTable(error_demand_lf, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
     error_demand_pt.adjustColumnWidths()
@@ -600,14 +613,21 @@ def run_experiment(experiment):
     subprocess.run(f'Model\CJFoods_windows-{experiment}.bat')
 
 def startup():
-    out_string = connectToHANA()
-    statusbar.config(text = out_string)
-    if connection_to_HANA:
-        add_manual_input_btn['state'] = 'normal'
-        (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
-        display_info_widget['state'] = 'normal'
-        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n\n')
-        display_info_widget['state'] = 'disabled'
+    connected = False
+    while not connected:
+        out_string = connectToHANA()
+        statusbar.config(text = out_string)
+        if connection_to_HANA:
+            connected = True
+        else:
+            time_module.sleep(5)
+    update_db_from_SAGE_btn['state'] = 'normal'
+    generate_model_files_from_backup_btn['state'] = 'normal'
+    add_manual_input_btn['state'] = 'normal'        
+    (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
+    display_info_widget['state'] = 'normal'
+    display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n\n')
+    display_info_widget['state'] = 'disabled'
         # #Load manual tables
         # #TODO clean hardcoding        -----------
         # global extruders_schedule_df, families_df, product_priority_df, customer_df
@@ -644,7 +664,11 @@ if __name__ == '__main__':
     buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10, fill = tk.Y)
     buttons_frame.pack_propagate(0)
     
-    logo_canvas = tk.Canvas(buttons_frame)
+    # logo = Image.open("Alphia_Logo.jpg").resize((300,157), Image.ANTIALIAS)
+    # logo = ImageTk.PhotoImage(logo)
+    # logo_canvas = tk.Canvas(buttons_frame)
+    # logo_canvas.create_image(0, 0, image = logo)
+    # logo_canvas.pack()
 
     read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Select Data Source')
     read_data_lf.pack(fill = tk.X, padx = 10, pady = 10)
@@ -652,18 +676,17 @@ if __name__ == '__main__':
     read_data_frame = ttk.Frame(read_data_lf)
     read_data_frame.pack()
 
-    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from REST Services', command = lambda: update_db_from_SAGE_command())
+    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from REST Services', command = lambda: update_db_from_SAGE_command(), state = 'disabled')
     update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
 
-    generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command())
+    generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command(), state = 'disabled')
     generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
     manual_input_lf = ttk.LabelFrame(buttons_frame, text = '2. Add Manual Input (optional)')
     manual_input_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
-    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables', command = lambda: add_manual_input())
+    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables', command = lambda: add_manual_input(), state = 'disabled')
     add_manual_input_btn.pack(padx = 10, pady = (15, 20), ipadx = 10, ipady = 2)
-    add_manual_input_btn.state(['disabled'])
 
     run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select Experiment')
     run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
@@ -724,7 +747,7 @@ if __name__ == '__main__':
     error_demand_lf = ttk.LabelFrame(right_frame, text = '    Error Demand')
     error_demand_lf.pack(fill = tk.BOTH, expand = True, padx = 15, pady = 15)
 
-    fig = Figure()
+    fig = Figure(figsize = (12,5))
     ax = fig.add_subplot(111)
     canvas = FigureCanvasTkAgg(fig, master = display_info_widget)
     canvas.draw()
@@ -732,3 +755,6 @@ if __name__ == '__main__':
     threading.Thread(target = startup).start()
 
     root.mainloop()
+
+if connection_to_HANA:
+    connection_to_HANA.close()
