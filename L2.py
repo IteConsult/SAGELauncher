@@ -621,12 +621,22 @@ def startup():
             connected = True
         else:
             time_module.sleep(5)
+            
+def show_start_info():
+    #Activate buttons
     update_db_from_SAGE_btn['state'] = 'normal'
     generate_model_files_from_backup_btn['state'] = 'normal'
     add_manual_input_btn['state'] = 'normal'        
+    #Bring time of last update
     (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
+    #Bring last error demand
+    ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection_to_HANA)
+    error_demand_pt = CustomTable(error_demand_lf, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
+    error_demand_pt.adjustColumnWidths()
+    error_demand_pt.show()
+
     display_info_widget['state'] = 'normal'
-    display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n\n')
+    display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand:,}\n\n')
     display_info_widget['state'] = 'disabled'
         # #Load manual tables
         # #TODO clean hardcoding        -----------
@@ -636,6 +646,12 @@ def startup():
         # product_priority_df = pd.read_sql_table('product_priority', schema = 'manual_files', con = connection_to_HANA)
         # customer_df = pd.read_sql_table('customer_priority', schema = 'manual_files', con = connection_to_HANA)
         # #--------------------------------------
+
+def wait_startup():
+    if startup_thread.is_alive():
+        root.after(2000, wait_startup)
+    else:
+        threading.Thread(target = lambda: show_start_info(), daemon = True).start()
 
 if __name__ == '__main__':
 
@@ -659,72 +675,101 @@ if __name__ == '__main__':
 
     statusbar = tk.Label(root, text = 'Establishing connection to cloud database...', relief = tk.SUNKEN, anchor = 'w')
     statusbar.pack(side = tk.BOTTOM, fill = tk.X)
+    
+    left_frm = ttk.Frame(root, width = 460)
+    left_frm.pack(side = tk.LEFT, fill = tk.Y)
 
-    buttons_frame = ttk.Frame(root, width = 270)
-    buttons_frame.pack(side = tk.LEFT, padx = 10, pady = 10, fill = tk.Y)
-    buttons_frame.pack_propagate(0)
+    # buttons_frame = ttk.Frame(root, width = 400)
+    buttons_frame = ttk.Frame(left_frm)
+    buttons_frame.pack(side = tk.BOTTOM, padx = 10, pady = 10, fill = tk.Y, expand = True)
+    # buttons_frame.pack_propagate(0)
     
     # logo = Image.open("Alphia_Logo.jpg").resize((300,157), Image.ANTIALIAS)
     # logo = ImageTk.PhotoImage(logo)
     # logo_canvas = tk.Canvas(buttons_frame)
     # logo_canvas.create_image(0, 0, image = logo)
     # logo_canvas.pack()
+    
+    # canvas = Canvas(root, width = 300, height = 300)  
+    # canvas.pack()  
+    # img = ImageTk.PhotoImage(Image.open("ball.png"))  
+    # canvas.create_image(20, 20, anchor=NW, image=img) 
 
-    read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Select Data Source')
+    read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Update Data')
     read_data_lf.pack(fill = tk.X, padx = 10, pady = 10)
-
+    
     read_data_frame = ttk.Frame(read_data_lf)
-    read_data_frame.pack()
+    read_data_frame.pack(pady = 10)
 
-    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from REST Services', command = lambda: update_db_from_SAGE_command(), state = 'disabled')
-    update_db_from_SAGE_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
+    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from REST Services', command = lambda: update_db_from_SAGE_command(), state = 'disabled', width = 23)
+    update_db_from_SAGE_btn.pack(side = tk.LEFT, ipadx = 10, ipady = 2, padx = 20)
 
-    generate_model_files_from_backup_btn = ttk.Button(read_data_frame, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command(), state = 'disabled')
-    generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
+    generate_model_files_from_backup_btn = ttk.Button(read_data_lf, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command(),  width = 50, state = 'disabled')
+    # generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
-    manual_input_lf = ttk.LabelFrame(buttons_frame, text = '2. Add Manual Input (optional)')
-    manual_input_lf.pack(fill = tk.X, padx = 10, pady = 10)
-
-    add_manual_input_btn = ttk.Button(manual_input_lf, text = 'Edit Manual Tables', command = lambda: add_manual_input(), state = 'disabled')
-    add_manual_input_btn.pack(padx = 10, pady = (15, 20), ipadx = 10, ipady = 2)
+    add_manual_input_btn = ttk.Button(read_data_frame, text = 'Edit Manual Tables', command = lambda: add_manual_input(), state = 'disabled', width = 23)
+    add_manual_input_btn.pack(side = tk.LEFT, ipadx = 10, ipady = 2, padx = 20)
 
     run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select Experiment')
     run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
-    run_model_frame = ttk.Frame(run_model_lf)
-    run_model_frame.pack()
+    run_model_leftframe = ttk.Frame(run_model_lf)
+    run_model_lf.columnconfigure(0, weight = 1, uniform = 'fred')
+    run_model_leftframe.grid(pady = 10, row = 0, column = 0)
 
-    run_simulation_btn = ttk.Button(run_model_frame, text = 'Run Simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
-    run_simulation_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
+    run_simulation_btn = ttk.Button(run_model_leftframe, text = 'Run Simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
+    run_simulation_btn.pack(ipadx = 10, ipady = 2, padx = 20)
 
-    run_optimization_btn = ttk.Button(run_model_frame, text = 'Run Optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
-    run_optimization_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
+    run_model_rightframe = ttk.Frame(run_model_lf)
+    run_model_lf.columnconfigure(1, weight = 1, uniform = 'fred')
+    run_model_rightframe.grid(pady = 10, row = 0, column = 1)
+
+    run_optimization_btn = ttk.Button(run_model_rightframe, text = 'Run Optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
+    run_optimization_btn.pack(ipadx = 10, ipady = 2, padx = 20)
 
     sac_buttons_lf = ttk.LabelFrame(buttons_frame, text = '4. View Cloud Stories')
     sac_buttons_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
-    sac_buttons_frame = ttk.Frame(sac_buttons_lf)
-    sac_buttons_frame.pack()
+    sac_buttons_frm = ttk.Frame(sac_buttons_lf)
+    sac_buttons_frm.pack(padx = 10, pady = 10, fill = tk.X)
 
-    report_catalog_btn = ttk.Button(sac_buttons_frame, text = 'Report Catalog',
+    sac_buttons_leftframe = ttk.Frame(sac_buttons_frm)
+    sac_buttons_frm.columnconfigure(0, weight = 1, uniform = 'sac_buttons')
+    # sac_buttons_leftframe.pack(side = tk.LEFT, anchor = 'n')
+    sac_buttons_leftframe.grid(row = 0, column = 0)
+
+    report_catalog_btn = ttk.Button(sac_buttons_leftframe, text = 'Report Catalog',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
-    report_catalog_btn.pack(padx = 10, pady = (15, 17), ipadx = 10, ipady = 2, fill = tk.X)
+    report_catalog_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
 
-    run_summary_btn = ttk.Button(sac_buttons_frame, text = 'Run Summary',
+    run_summary_btn = ttk.Button(sac_buttons_leftframe, text = 'Run Summary',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
-    run_summary_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
+    run_summary_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
 
-    demand_review_btn = ttk.Button(sac_buttons_frame, text = 'Demand Review',
+    demand_review_btn = ttk.Button(sac_buttons_leftframe, text = 'Demand Review',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
-    demand_review_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
+    demand_review_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
 
-    unassigned_wo_btn = ttk.Button(sac_buttons_frame, text = 'Schedule Review',
+    sac_buttons_rightframe = ttk.Frame(sac_buttons_frm)
+    # sac_buttons_leftframe.pack(side = tk.LEFT, anchor = 'n')
+    sac_buttons_frm.columnconfigure(1, weight = 1, uniform = 'sac_buttons')
+    sac_buttons_rightframe.grid(row = 0, column = 1)
+    
+    unassigned_wo_btn = ttk.Button(sac_buttons_rightframe, text = 'Schedule Review',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
-    unassigned_wo_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
+    unassigned_wo_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
 
-    data_errors_btn = ttk.Button(sac_buttons_frame, text = 'Master Data Errors',
+    data_errors_btn = ttk.Button(sac_buttons_rightframe, text = 'Master Data Errors',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
-    data_errors_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
+    data_errors_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
+    
+    
+    top_img = Image.open("iteLogo.png")
+    ite_logo_canvas = tk.Canvas(left_frm, bg = 'white', height = 120, highlightthickness=0, borderwidth = 0)
+    ite_logo_canvas.pack(side = tk.TOP, fill = tk.X)
+    # img = ImageTk.PhotoImage(top_img.resize((canvas_width, canvas_height), Image.ANTIALIAS)) 
+    img = ImageTk.PhotoImage(top_img.resize((640//3, 177//3), Image.ANTIALIAS)) 
+    ite_logo_canvas.create_image(230, 60, anchor = tk.CENTER, image=img) 
 
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
@@ -733,7 +778,11 @@ if __name__ == '__main__':
     right_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
 
     demand_info_lf = ttk.LabelFrame(right_frame, text = '    Demand Info')
-    demand_info_lf.pack(fill = tk.X, padx = 15, pady = (15,0))
+    # demand_info_lf.pack(fill = tk.X, padx = 15, pady = (15,0))
+    right_frame.columnconfigure(0, weight = 1, uniform = 'col')
+    for row in range(3):
+        right_frame.rowconfigure(row, weight = 1, uniform = 'right')
+    demand_info_lf.grid(row = 0, rowspan = 2, sticky = 'nsew', padx = 15, pady = (15,0))
 
     display_info_frm = ttk.Frame(demand_info_lf)
     display_info_frm.pack(fill = tk.X, expand = True, padx = 0, pady = (15,0))
@@ -745,14 +794,18 @@ if __name__ == '__main__':
     display_info_widget['yscrollcommand'] = display_info_ys.set
 
     error_demand_lf = ttk.LabelFrame(right_frame, text = '    Error Demand')
-    error_demand_lf.pack(fill = tk.BOTH, expand = True, padx = 15, pady = 15)
+    # error_demand_lf.pack(fill = tk.BOTH, expand = True, padx = 15, pady = 15)
+    error_demand_lf.grid(row = 2, sticky = 'nsew', padx = 15, pady = 15)
 
     fig = Figure(figsize = (12,5))
     ax = fig.add_subplot(111)
     canvas = FigureCanvasTkAgg(fig, master = display_info_widget)
     canvas.draw()
 
-    threading.Thread(target = startup).start()
+    startup_thread = threading.Thread(target = startup, daemon = True)
+    startup_thread.start()
+    
+    root.after(1000, wait_startup)
 
     root.mainloop()
 
