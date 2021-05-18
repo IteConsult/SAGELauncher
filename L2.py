@@ -529,7 +529,7 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
         pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
         print('Updated backup time successfully.')
         display_info_widget['state'] = 'normal'
-        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand}\n\n')
+        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand:,}\n\n')
         display_info_widget['state'] = 'disabled'
     except Exception as e:
         print('Failed to update backup time: ' + traceback.format_exc())
@@ -576,7 +576,6 @@ def display_info(DEMAND, ERROR_DEMAND):
     df = df[['Due date', 'Demand quantity (pounds)']]
     df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
     df = df.groupby('Week start', as_index = False).sum()
-    print(df)
 
     # a = df.plot(x = 'Week start', y = 'Demand quantity (pounds)', kind = 'bar', ax = ax)
     plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
@@ -658,13 +657,12 @@ if __name__ == '__main__':
     root = tk.Tk()
     root.title('ITE Consult Launcher')
     root.iconbitmap(default = 'iteIcon.ico')
-    
     root.configure(bg = 'white')
     s = ttk.Style()
-    root.state("zoomed")
+    # root.state("zoomed")
     s_width = root.winfo_screenwidth()
     s_height = root.winfo_screenheight()
-    #root.resizable(height = False, width = False)
+    root.resizable(height = False, width = False)
 
     s = ttk.Style()
     s.configure('TFrame', background = 'white')
@@ -676,100 +674,102 @@ if __name__ == '__main__':
     statusbar = tk.Label(root, text = 'Establishing connection to cloud database...', relief = tk.SUNKEN, anchor = 'w')
     statusbar.pack(side = tk.BOTTOM, fill = tk.X)
     
-    left_frm = ttk.Frame(root, width = 460)
+    left_frm = ttk.Frame(root)
     left_frm.pack(side = tk.LEFT, fill = tk.Y)
 
     # buttons_frame = ttk.Frame(root, width = 400)
     buttons_frame = ttk.Frame(left_frm)
     buttons_frame.pack(side = tk.BOTTOM, padx = 10, pady = 10, fill = tk.Y, expand = True)
     # buttons_frame.pack_propagate(0)
-    
-    # logo = Image.open("Alphia_Logo.jpg").resize((300,157), Image.ANTIALIAS)
-    # logo = ImageTk.PhotoImage(logo)
-    # logo_canvas = tk.Canvas(buttons_frame)
-    # logo_canvas.create_image(0, 0, image = logo)
-    # logo_canvas.pack()
-    
-    # canvas = Canvas(root, width = 300, height = 300)  
-    # canvas.pack()  
-    # img = ImageTk.PhotoImage(Image.open("ball.png"))  
-    # canvas.create_image(20, 20, anchor=NW, image=img) 
 
     read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Update Data')
     read_data_lf.pack(fill = tk.X, padx = 10, pady = 10)
     
-    read_data_frame = ttk.Frame(read_data_lf)
-    read_data_frame.pack(pady = 10)
+    read_data_leftframe = ttk.Frame(read_data_lf)
+    read_data_lf.columnconfigure(0, weight = 1, uniform = 'read_data')
+    read_data_leftframe.grid(pady = 10, row = 0, column = 0, sticky = 'ew')
 
-    update_db_from_SAGE_btn = ttk.Button(read_data_frame, text = 'Read from REST Services', command = lambda: update_db_from_SAGE_command(), state = 'disabled', width = 23)
-    update_db_from_SAGE_btn.pack(side = tk.LEFT, ipadx = 10, ipady = 2, padx = 20)
+    update_db_from_SAGE_btn = ttk.Button(read_data_leftframe, width = 20, text = 'Read Data', command = lambda: update_db_from_SAGE_command(), state = 'disabled')
+    update_db_from_SAGE_btn.pack(ipadx = 10, ipady = 2, padx = 20)
+    
+    read_data_rightframe = ttk.Frame(read_data_lf)
+    read_data_lf.columnconfigure(1, weight = 1, uniform = 'read_data')
+    read_data_rightframe.grid(pady = 10, row = 0, column = 1, sticky = 'ew')
 
-    generate_model_files_from_backup_btn = ttk.Button(read_data_lf, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command(),  width = 50, state = 'disabled')
+    generate_model_files_from_backup_btn = ttk.Button(read_data_rightframe, width = 20, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command(), state = 'disabled')
     # generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
-    add_manual_input_btn = ttk.Button(read_data_frame, text = 'Edit Manual Tables', command = lambda: add_manual_input(), state = 'disabled', width = 23)
-    add_manual_input_btn.pack(side = tk.LEFT, ipadx = 10, ipady = 2, padx = 20)
+    add_manual_input_btn = ttk.Button(read_data_rightframe, width = 20, text = 'Manual Data', command = lambda: add_manual_input(), state = 'disabled')
+    add_manual_input_btn.pack(ipadx = 10, ipady = 2, padx = 20)
 
-    run_model_lf = ttk.LabelFrame(buttons_frame, text = '3. Select Experiment')
+    run_model_lf = ttk.LabelFrame(buttons_frame, text = '2. Select Experiment')
     run_model_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
     run_model_leftframe = ttk.Frame(run_model_lf)
     run_model_lf.columnconfigure(0, weight = 1, uniform = 'fred')
-    run_model_leftframe.grid(pady = 10, row = 0, column = 0)
+    run_model_leftframe.grid(pady = 10, row = 0, column = 0, sticky = 'ew')
 
-    run_simulation_btn = ttk.Button(run_model_leftframe, text = 'Run Simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
+    run_simulation_canvas = tk.Canvas(run_model_leftframe, width = 120, height = 120, bg = 'white', highlightthickness=0, borderwidth = 0)
+    run_simulation_canvas.pack(pady = 15)
+    simulation_img = ImageTk.PhotoImage(Image.open("sim.png").resize((120, 120), Image.ANTIALIAS)) 
+    run_simulation_canvas.create_image(60, 60, anchor = tk.CENTER, image = simulation_img) 
+    run_simulation_btn = ttk.Button(run_model_leftframe, width = 20, text = 'Run Simulation', command = lambda: threading.Thread(target = run_experiment, args = ('simulation',), daemon = True).start())
     run_simulation_btn.pack(ipadx = 10, ipady = 2, padx = 20)
 
     run_model_rightframe = ttk.Frame(run_model_lf)
     run_model_lf.columnconfigure(1, weight = 1, uniform = 'fred')
-    run_model_rightframe.grid(pady = 10, row = 0, column = 1)
+    run_model_rightframe.grid(pady = 10, row = 0, column = 1, sticky = 'ew')
 
-    run_optimization_btn = ttk.Button(run_model_rightframe, text = 'Run Optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
+    run_optimization_canvas = tk.Canvas(run_model_rightframe, width = 120, height = 120, bg = 'white', highlightthickness=0, borderwidth = 0)
+    run_optimization_canvas.pack(pady = 15)
+    optimization_img = ImageTk.PhotoImage(Image.open("opt.png").resize((120, 120), Image.ANTIALIAS)) 
+    run_optimization_canvas.create_image(60, 60, anchor = tk.CENTER, image = optimization_img) 
+    run_optimization_btn = ttk.Button(run_model_rightframe, width = 20, text = 'Run Optimization', command = lambda: threading.Thread(target = run_experiment, args = ('optimization',), daemon = True).start())
     run_optimization_btn.pack(ipadx = 10, ipady = 2, padx = 20)
 
-    sac_buttons_lf = ttk.LabelFrame(buttons_frame, text = '4. View Cloud Stories')
+    sac_buttons_lf = ttk.LabelFrame(buttons_frame, text = '3. View Cloud Stories')
     sac_buttons_lf.pack(fill = tk.X, padx = 10, pady = 10)
 
     sac_buttons_frm = ttk.Frame(sac_buttons_lf)
-    sac_buttons_frm.pack(padx = 10, pady = 10, fill = tk.X)
+    sac_buttons_frm.columnconfigure(0, weight = 1, uniform = 'sac_buttons')
+    sac_buttons_frm.columnconfigure(1, weight = 1, uniform = 'sac_buttons')
+    sac_buttons_frm.pack(fill = tk.X)
 
     sac_buttons_leftframe = ttk.Frame(sac_buttons_frm)
-    sac_buttons_frm.columnconfigure(0, weight = 1, uniform = 'sac_buttons')
     # sac_buttons_leftframe.pack(side = tk.LEFT, anchor = 'n')
-    sac_buttons_leftframe.grid(row = 0, column = 0)
+    sac_buttons_leftframe.grid(row = 0, column = 0, sticky = 'we')
 
-    report_catalog_btn = ttk.Button(sac_buttons_leftframe, text = 'Report Catalog',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
-    report_catalog_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
-
-    run_summary_btn = ttk.Button(sac_buttons_leftframe, text = 'Run Summary',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
-    run_summary_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
-
-    demand_review_btn = ttk.Button(sac_buttons_leftframe, text = 'Demand Review',
+    demand_review_btn = ttk.Button(sac_buttons_leftframe, width = 20, text = 'Demand Review',
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
-    demand_review_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
+    demand_review_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
+
+    data_errors_btn = ttk.Button(sac_buttons_leftframe, width = 20, text = 'Master Data Errors',
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
+    data_errors_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
+
+    run_summary_btn = ttk.Button(sac_buttons_leftframe, width = 20, text = 'Run Summary',
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
+    run_summary_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
 
     sac_buttons_rightframe = ttk.Frame(sac_buttons_frm)
     # sac_buttons_leftframe.pack(side = tk.LEFT, anchor = 'n')
-    sac_buttons_frm.columnconfigure(1, weight = 1, uniform = 'sac_buttons')
-    sac_buttons_rightframe.grid(row = 0, column = 1)
+    sac_buttons_rightframe.grid(row = 0, column = 1, sticky = 'we')
     
-    unassigned_wo_btn = ttk.Button(sac_buttons_rightframe, text = 'Schedule Review',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
-    unassigned_wo_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
+    report_catalog_btn = ttk.Button(sac_buttons_rightframe, width = 20, text = 'Report Catalog',
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
+    report_catalog_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
 
-    data_errors_btn = ttk.Button(sac_buttons_rightframe, text = 'Master Data Errors',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
-    data_errors_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2, fill = tk.X)
+    schedule_review_btn = ttk.Button(sac_buttons_rightframe, width = 20, text = 'Schedule Review')
+    schedule_review_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
     
-    
-    top_img = Image.open("iteLogo.png")
-    ite_logo_canvas = tk.Canvas(left_frm, bg = 'white', height = 120, highlightthickness=0, borderwidth = 0)
-    ite_logo_canvas.pack(side = tk.TOP, fill = tk.X)
-    # img = ImageTk.PhotoImage(top_img.resize((canvas_width, canvas_height), Image.ANTIALIAS)) 
-    img = ImageTk.PhotoImage(top_img.resize((640//3, 177//3), Image.ANTIALIAS)) 
-    ite_logo_canvas.create_image(230, 60, anchor = tk.CENTER, image=img) 
+    unassigned_wo_btn = ttk.Button(sac_buttons_rightframe, width = 20, text = 'Schedule Detail',
+                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
+    unassigned_wo_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)    
+
+    ite_logo_canvas = tk.Canvas(left_frm, bg = 'lightblue', height = 120, highlightthickness = 0, borderwidth = 0)
+    ite_logo_canvas.pack(side = tk.TOP, fill = tk.X, padx = 10)
+    img = ImageTk.PhotoImage(Image.open("iteLogo.png").resize((640//3, 177//3), Image.ANTIALIAS)) 
+    ite_logo_canvas.create_image(212, 60, anchor = tk.CENTER, image=img) 
 
     tables_separator = ttk.Separator(root, orient = 'vertical')
     tables_separator.pack(side = tk.LEFT, fill = tk.Y)
