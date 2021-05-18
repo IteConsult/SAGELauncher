@@ -659,10 +659,10 @@ if __name__ == '__main__':
     root.iconbitmap(default = 'iteIcon.ico')
     root.configure(bg = 'white')
     s = ttk.Style()
-    # root.state("zoomed")
+    root.state("zoomed")
     s_width = root.winfo_screenwidth()
     s_height = root.winfo_screenheight()
-    root.resizable(height = False, width = False)
+    # root.resizable(height = False, width = False)
 
     s = ttk.Style()
     s.configure('TFrame', background = 'white')
