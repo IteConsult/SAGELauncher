@@ -28,7 +28,7 @@ from PIL import (Image, ImageTk)
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
 #Debug variable
-to_excel = True
+to_excel = False
 #Global variables
 connection_to_HANA = None
 DEMAND = pd.DataFrame()
@@ -525,11 +525,14 @@ def generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, 
     try:
         connection_to_HANA.execute('DELETE FROM "SAGE"."LOG"')
         time = pd.to_datetime(datetime.datetime.now())
-        total_demand = DEMAND['Demand quantity (pounds)'].sum()
+        total_demand = int(DEMAND['Demand quantity (pounds)'].sum())
         pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = connection_to_HANA, if_exists = 'append', index = False)
         print('Updated backup time successfully.')
         display_info_widget['state'] = 'normal'
-        display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand:,}\n\n')
+        display_info_widget.delete('time_start', 'time_end')
+        display_info_widget.insert('time_start', f'{time.strftime("%d/%m/%y %H:%M")}')
+        display_info_widget.delete('total_demand_start', 'total_demand_end')
+        display_info_widget.insert('total_demand_start', f'{total_demand:,}')
         display_info_widget['state'] = 'disabled'
     except Exception as e:
         print('Failed to update backup time: ' + traceback.format_exc())
@@ -591,7 +594,7 @@ def display_info(DEMAND, ERROR_DEMAND):
     display_info_widget.window_create('end', window = canvas.get_tk_widget())
     display_info_widget.insert('end', '\n\n\n')
     
-    error_demand_pt = CustomTable(error_demand_lf, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
+    error_demand_pt = CustomTable(error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
     error_demand_pt.adjustColumnWidths()
     error_demand_pt.show()
     # error_demand_pt.draw_idle() #TODO no funciona
@@ -622,30 +625,54 @@ def startup():
             time_module.sleep(5)
             
 def show_start_info():
+    statusbar.config(text = 'Connection established. Retrieving last demand info...')
+    #Bring time of last update
+    (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
+    display_info_widget['state'] = 'normal'
+    # display_info_widget.mark_set('demand_info_start', tk.INSERT)
+    # display_info_widget.mark_gravity('demand_info_start', 'left')
+    display_info_widget.insert('end', f'    Time of cloud database last update from REST services: ')
+    display_info_widget.mark_set('time_start', tk.INSERT)
+    display_info_widget.mark_gravity('time_start', 'left')
+    display_info_widget.insert('end', f'{time.strftime("%d/%m/%y %H:%M")}')
+    display_info_widget.mark_set('time_end', tk.INSERT)
+    display_info_widget.mark_gravity('time_end', 'left')
+    display_info_widget.insert('end', '.\n\n    Total demand quantity: ')
+    display_info_widget.mark_set('total_demand_start', tk.INSERT)
+    display_info_widget.mark_gravity('total_demand_start', tk.LEFT)
+    display_info_widget.insert('end', f'{total_demand:,}')
+    display_info_widget.mark_set('total_demand_end', tk.INSERT)
+    display_info_widget.mark_gravity('total_demand_end', tk.LEFT)
+    display_info_widget.insert('end', '.\n\n')
+    # display_info_widget.mark_set('demand_info_end', tk.INSERT)
+    # display_info_widget.mark_gravity('demand_info_start', 'left')
+    display_info_widget['state'] = 'disabled'
+    #Displaying demand graphic
+    df = pd.read_sql_table('demand', schema = 'anylogic', con = connection_to_HANA).astype({'Demand quantity (pounds)': float})
+    df['Due date'] = pd.to_datetime(df['Due date'])
+    df = df[['Due date', 'Demand quantity (pounds)']]
+    df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
+    df = df.groupby('Week start', as_index = False).sum()
+    plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
+                  estimator = sum, ci = None, ax = ax)
+    ax.xaxis_date()
+    x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
+    ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
+    fig.canvas.draw_idle()
+    display_info_widget.window_create('end', window = canvas.get_tk_widget())
+    display_info_widget.insert('end', '\n\n')
+    #Bring last error demand
+    ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection_to_HANA)
+    error_demand_pt = CustomTable(error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
+    error_demand_pt.adjustColumnWidths()
+    error_demand_pt.show()
+    right_notebook.tab(1, state = 'normal')
+    statusbar.config(text = 'Connection established.')
     #Activate buttons
     update_db_from_SAGE_btn['state'] = 'normal'
     generate_model_files_from_backup_btn['state'] = 'normal'
     add_manual_input_btn['state'] = 'normal'        
-    #Bring time of last update
-    (time, total_demand) = connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
-    #Bring last error demand
-    ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection_to_HANA)
-    error_demand_pt = CustomTable(error_demand_lf, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
-    error_demand_pt.adjustColumnWidths()
-    error_demand_pt.show()
-
-    display_info_widget['state'] = 'normal'
-    display_info_widget.insert('end', f'Time of cloud database last update from REST services: {time}\n\nTotal demand quantity: {total_demand:,}\n\n')
-    display_info_widget['state'] = 'disabled'
-        # #Load manual tables
-        # #TODO clean hardcoding        -----------
-        # global extruders_schedule_df, families_df, product_priority_df, customer_df
-        # extruders_schedule_df = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = connection_to_HANA)
-        # families_df = pd.read_sql_table('families', schema = 'manual_files', con = connection_to_HANA)
-        # product_priority_df = pd.read_sql_table('product_priority', schema = 'manual_files', con = connection_to_HANA)
-        # customer_df = pd.read_sql_table('customer_priority', schema = 'manual_files', con = connection_to_HANA)
-        # #--------------------------------------
-
+    
 def wait_startup():
     if startup_thread.is_alive():
         root.after(2000, wait_startup)
@@ -653,7 +680,6 @@ def wait_startup():
         threading.Thread(target = lambda: show_start_info(), daemon = True).start()
 
 if __name__ == '__main__':
-
     root = tk.Tk()
     root.title('ITE Consult Launcher')
     root.iconbitmap(default = 'iteIcon.ico')
@@ -662,6 +688,7 @@ if __name__ == '__main__':
     root.state("zoomed")
     s_width = root.winfo_screenwidth()
     s_height = root.winfo_screenheight()
+    root.minsize(1520, 700)
     # root.resizable(height = False, width = False)
 
     s = ttk.Style()
@@ -766,9 +793,10 @@ if __name__ == '__main__':
                             command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
     unassigned_wo_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)    
 
-    ite_logo_canvas = tk.Canvas(left_frm, bg = 'lightblue', height = 120, highlightthickness = 0, borderwidth = 0)
+    ite_logo_canvas = tk.Canvas(left_frm, bg = 'midnight blue', height = 120, highlightthickness = 0, borderwidth = 0)
     ite_logo_canvas.pack(side = tk.TOP, fill = tk.X, padx = 10)
-    img = ImageTk.PhotoImage(Image.open("iteLogo.png").resize((640//3, 177//3), Image.ANTIALIAS)) 
+    # img = ImageTk.PhotoImage(Image.open("iteLogo.png").resize((640//3, 177//3), Image.ANTIALIAS)) 
+    img = ImageTk.PhotoImage(Image.open("newLogo.png").resize((640//3, 177//3), Image.ANTIALIAS)) 
     ite_logo_canvas.create_image(212, 60, anchor = tk.CENTER, image=img) 
 
     tables_separator = ttk.Separator(root, orient = 'vertical')
@@ -776,28 +804,36 @@ if __name__ == '__main__':
 
     right_frame = ttk.Frame(root)
     right_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
+    
+    right_notebook = ttk.Notebook(right_frame)
+    right_notebook.pack(expand = True, fill = tk.BOTH)
+    # right_notebook.add('error_demand', text = 'Error Demand')
 
-    demand_info_lf = ttk.LabelFrame(right_frame, text = '    Demand Info')
+    # demand_info_lf = ttk.LabelFrame(right_frame, text = '    Demand Info')
     # demand_info_lf.pack(fill = tk.X, padx = 15, pady = (15,0))
-    right_frame.columnconfigure(0, weight = 1, uniform = 'col')
-    for row in range(3):
-        right_frame.rowconfigure(row, weight = 1, uniform = 'right')
-    demand_info_lf.grid(row = 0, rowspan = 2, sticky = 'nsew', padx = 15, pady = (15,0))
+    # right_frame.columnconfigure(0, weight = 1, uniform = 'col')
+    # for row in range(3):
+        # right_frame.rowconfigure(row, weight = 1, uniform = 'right')
+    # demand_info_lf.grid(row = 0, rowspan = 2, sticky = 'nsew', padx = 15, pady = (15,0))
 
-    display_info_frm = ttk.Frame(demand_info_lf)
-    display_info_frm.pack(fill = tk.X, expand = True, padx = 0, pady = (15,0))
+    display_info_frm = ttk.Frame(right_notebook)
+    right_notebook.add(display_info_frm, text = '  Demand Info   ')
+    # display_info_frm.pack(fill = tk.X, expand = True, padx = 0, pady = (15,0))
 
     display_info_widget = tk.Text(display_info_frm, wrap = 'word', state = 'disabled', relief = tk.FLAT, bg = 'white')
-    display_info_widget.pack(fill = tk.X, expand = True, side = tk.LEFT, padx = (20, 0))
+    display_info_widget.pack(fill = tk.BOTH, expand = True, side = tk.LEFT, padx = (20, 0), pady = 20)
     display_info_ys = ttk.Scrollbar(display_info_frm, orient = 'vertical', command = display_info_widget.yview)
     display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
     display_info_widget['yscrollcommand'] = display_info_ys.set
 
-    error_demand_lf = ttk.LabelFrame(right_frame, text = '    Error Demand')
+    # error_demand_lf = ttk.LabelFrame(right_notebook, text = '    Error Demand')
+    error_demand_frm = ttk.Frame(right_notebook)
+    right_notebook.add(error_demand_frm, text = '  Error Demand   ', padding = 15)
+    right_notebook.tab(1, state = 'disabled')
     # error_demand_lf.pack(fill = tk.BOTH, expand = True, padx = 15, pady = 15)
-    error_demand_lf.grid(row = 2, sticky = 'nsew', padx = 15, pady = 15)
+    # error_demand_lf.grid(row = 2, sticky = 'nsew', padx = 15, pady = 15)
 
-    fig = Figure(figsize = (12,5))
+    fig = Figure(figsize = (10,4), tight_layout = True)
     ax = fig.add_subplot(111)
     canvas = FigureCanvasTkAgg(fig, master = display_info_widget)
     canvas.draw()
