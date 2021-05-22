@@ -31,9 +31,6 @@ sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHD
 to_excel = False
 #Global variables
 connection_to_HANA = None
-DEMAND = pd.DataFrame()
-
-# DEMAND = ERROR_DEMAND = pd.DataFrame()
 
 def connectToHANA():
     global connection_to_HANA
@@ -663,7 +660,7 @@ def show_start_info():
     display_info_widget.insert('end', '\n\n')
     #Bring last error demand
     ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection_to_HANA)
-    error_demand_pt = CustomTable(error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
+    error_demand_pt = CustomTable(error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
     error_demand_pt.adjustColumnWidths()
     error_demand_pt.show()
     right_notebook.tab(1, state = 'normal')
@@ -672,7 +669,7 @@ def show_start_info():
     update_db_from_SAGE_btn['state'] = 'normal'
     generate_model_files_from_backup_btn['state'] = 'normal'
     add_manual_input_btn['state'] = 'normal'        
-    
+
 def wait_startup():
     if startup_thread.is_alive():
         root.after(2000, wait_startup)
@@ -680,6 +677,7 @@ def wait_startup():
         threading.Thread(target = lambda: show_start_info(), daemon = True).start()
 
 if __name__ == '__main__':
+
     root = tk.Tk()
     root.title('ITE Consult Launcher')
     root.iconbitmap(default = 'iteIcon.ico')
@@ -689,7 +687,6 @@ if __name__ == '__main__':
     s_width = root.winfo_screenwidth()
     s_height = root.winfo_screenheight()
     root.minsize(1520, 700)
-    # root.resizable(height = False, width = False)
 
     s = ttk.Style()
     s.configure('TFrame', background = 'white')
@@ -700,31 +697,28 @@ if __name__ == '__main__':
 
     statusbar = tk.Label(root, text = 'Establishing connection to cloud database...', relief = tk.SUNKEN, anchor = 'w')
     statusbar.pack(side = tk.BOTTOM, fill = tk.X)
-    
+
     left_frm = ttk.Frame(root)
     left_frm.pack(side = tk.LEFT, fill = tk.Y)
 
-    # buttons_frame = ttk.Frame(root, width = 400)
     buttons_frame = ttk.Frame(left_frm)
     buttons_frame.pack(side = tk.BOTTOM, padx = 10, pady = 10, fill = tk.Y, expand = True)
-    # buttons_frame.pack_propagate(0)
 
     read_data_lf = ttk.LabelFrame(buttons_frame, text = '1. Update Data')
     read_data_lf.pack(fill = tk.X, padx = 10, pady = 10)
-    
+
     read_data_leftframe = ttk.Frame(read_data_lf)
     read_data_lf.columnconfigure(0, weight = 1, uniform = 'read_data')
     read_data_leftframe.grid(pady = 10, row = 0, column = 0, sticky = 'ew')
 
     update_db_from_SAGE_btn = ttk.Button(read_data_leftframe, width = 20, text = 'Read Data', command = lambda: update_db_from_SAGE_command(), state = 'disabled')
     update_db_from_SAGE_btn.pack(ipadx = 10, ipady = 2, padx = 20)
-    
+
     read_data_rightframe = ttk.Frame(read_data_lf)
     read_data_lf.columnconfigure(1, weight = 1, uniform = 'read_data')
     read_data_rightframe.grid(pady = 10, row = 0, column = 1, sticky = 'ew')
 
     generate_model_files_from_backup_btn = ttk.Button(read_data_rightframe, width = 20, text = 'Read from Cloud Database', command = lambda: generate_model_files_from_backup_command(), state = 'disabled')
-    # generate_model_files_from_backup_btn.pack(padx = 10, pady = (0, 20), ipadx = 10, ipady = 2, fill = tk.X)
 
     add_manual_input_btn = ttk.Button(read_data_rightframe, width = 20, text = 'Manual Data', command = lambda: add_manual_input(), state = 'disabled')
     add_manual_input_btn.pack(ipadx = 10, ipady = 2, padx = 20)
@@ -763,39 +757,27 @@ if __name__ == '__main__':
     sac_buttons_frm.pack(fill = tk.X)
 
     sac_buttons_leftframe = ttk.Frame(sac_buttons_frm)
-    # sac_buttons_leftframe.pack(side = tk.LEFT, anchor = 'n')
     sac_buttons_leftframe.grid(row = 0, column = 0, sticky = 'we')
 
-    demand_review_btn = ttk.Button(sac_buttons_leftframe, width = 20, text = 'Demand Review',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D'))
-    demand_review_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
-
-    data_errors_btn = ttk.Button(sac_buttons_leftframe, width = 20, text = 'Master Data Errors',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442'))
-    data_errors_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
-
-    run_summary_btn = ttk.Button(sac_buttons_leftframe, width = 20, text = 'Run Summary',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9'))
-    run_summary_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
-
     sac_buttons_rightframe = ttk.Frame(sac_buttons_frm)
-    # sac_buttons_leftframe.pack(side = tk.LEFT, anchor = 'n')
     sac_buttons_rightframe.grid(row = 0, column = 1, sticky = 'we')
-    
-    report_catalog_btn = ttk.Button(sac_buttons_rightframe, width = 20, text = 'Report Catalog',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog'))
-    report_catalog_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
 
-    schedule_review_btn = ttk.Button(sac_buttons_rightframe, width = 20, text = 'Schedule Review')
-    schedule_review_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
-    
-    unassigned_wo_btn = ttk.Button(sac_buttons_rightframe, width = 20, text = 'Schedule Detail',
-                            command = lambda: webopen('https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9'))
-    unassigned_wo_btn.pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)    
+    buttons_dic = {'Demand Review': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',
+                  'Master Data Errors': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
+                  'Run Summary': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9',
+                  'Schedule Review (!)': 'http://www.google.com/',
+                  'Report Catalog': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog',
+                  'Schedule Detail': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9',
+                  }
+
+    side = lambda i: sac_buttons_leftframe if i%2 == 0 else sac_buttons_rightframe
+    i = 0
+    for button in buttons_dic:
+        ttk.Button(side(i), width = 20, text = button, command = lambda link = buttons_dic[button]: webopen(link)).pack(padx = 20, pady = 10, ipadx = 10, ipady = 2)
+        i += 1
 
     ite_logo_canvas = tk.Canvas(left_frm, bg = 'midnight blue', height = 120, highlightthickness = 0, borderwidth = 0)
     ite_logo_canvas.pack(side = tk.TOP, fill = tk.X, padx = 10)
-    # img = ImageTk.PhotoImage(Image.open("iteLogo.png").resize((640//3, 177//3), Image.ANTIALIAS)) 
     img = ImageTk.PhotoImage(Image.open("newLogo.png").resize((640//3, 177//3), Image.ANTIALIAS)) 
     ite_logo_canvas.create_image(212, 60, anchor = tk.CENTER, image=img) 
 
@@ -804,21 +786,12 @@ if __name__ == '__main__':
 
     right_frame = ttk.Frame(root)
     right_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
-    
+
     right_notebook = ttk.Notebook(right_frame)
     right_notebook.pack(expand = True, fill = tk.BOTH)
-    # right_notebook.add('error_demand', text = 'Error Demand')
-
-    # demand_info_lf = ttk.LabelFrame(right_frame, text = '    Demand Info')
-    # demand_info_lf.pack(fill = tk.X, padx = 15, pady = (15,0))
-    # right_frame.columnconfigure(0, weight = 1, uniform = 'col')
-    # for row in range(3):
-        # right_frame.rowconfigure(row, weight = 1, uniform = 'right')
-    # demand_info_lf.grid(row = 0, rowspan = 2, sticky = 'nsew', padx = 15, pady = (15,0))
 
     display_info_frm = ttk.Frame(right_notebook)
     right_notebook.add(display_info_frm, text = '  Demand Info   ')
-    # display_info_frm.pack(fill = tk.X, expand = True, padx = 0, pady = (15,0))
 
     display_info_widget = tk.Text(display_info_frm, wrap = 'word', state = 'disabled', relief = tk.FLAT, bg = 'white')
     display_info_widget.pack(fill = tk.BOTH, expand = True, side = tk.LEFT, padx = (20, 0), pady = 20)
@@ -826,12 +799,9 @@ if __name__ == '__main__':
     display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
     display_info_widget['yscrollcommand'] = display_info_ys.set
 
-    # error_demand_lf = ttk.LabelFrame(right_notebook, text = '    Error Demand')
     error_demand_frm = ttk.Frame(right_notebook)
     right_notebook.add(error_demand_frm, text = '  Error Demand   ', padding = 15)
     right_notebook.tab(1, state = 'disabled')
-    # error_demand_lf.pack(fill = tk.BOTH, expand = True, padx = 15, pady = 15)
-    # error_demand_lf.grid(row = 2, sticky = 'nsew', padx = 15, pady = 15)
 
     fig = Figure(figsize = (10,4), tight_layout = True)
     ax = fig.add_subplot(111)

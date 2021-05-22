@@ -1,5 +1,6 @@
-import pandastable
-import tkinter as tk
+from pandastable import *
+# import tkinter as tk
+from tkinter import *
 import math
 import pandas as pd
 
@@ -7,7 +8,7 @@ def getTextLength(text, w, font=None):
 	"""Get correct canvas text size (chars) that will fit in \
 	a given canvas width"""
 
-	SCRATCH = tk.Canvas()
+	SCRATCH = Canvas()
 	scratch = SCRATCH
 	length = len(text)
 	t = scratch.create_text((0,0), text=text, font=font)
@@ -18,43 +19,53 @@ def getTextLength(text, w, font=None):
 	length = math.floor(w*ratio)
 	return twidth,length
 
-class CustomTable(pandastable.Table):
+class CustomTable(Table):
 
-	def __init__(self, *args, non_editable_columns = [], **kwargs):
-		pandastable.Table.__init__(self, *args, **kwargs)
-		self.non_editable_columns = non_editable_columns
+	def __init__(self, *args, **kwargs):
+		Table.__init__(self, *args, **kwargs)
+		
+	def show(self, callback=None):
+		"""Adds column header and scrollbars and combines them with
+		   the current table adding all to the master frame provided in constructor.
+		   Table is then redrawn."""
 
+		#Add the table and header to the frame
+		#ITE: We change RowHeader for CustomRowHeader
+		self.rowheader = CustomRowHeader(self.parentframe, self)
+		self.tablecolheader = ColumnHeader(self.parentframe, self, bg=self.colheadercolor)
+		self.rowindexheader = IndexHeader(self.parentframe, self)
+		self.Yscrollbar = AutoScrollbar(self.parentframe,orient=VERTICAL,command=self.set_yviews)
+		self.Yscrollbar.grid(row=1,column=2,rowspan=1,sticky='news',pady=0,ipady=0)
+		self.Xscrollbar = AutoScrollbar(self.parentframe,orient=HORIZONTAL,command=self.set_xviews)
+		self.Xscrollbar.grid(row=2,column=1,columnspan=1,sticky='news')
+		self['xscrollcommand'] = self.Xscrollbar.set
+		self['yscrollcommand'] = self.Yscrollbar.set
+		self.tablecolheader['xscrollcommand'] = self.Xscrollbar.set
+		self.rowheader['yscrollcommand'] = self.Yscrollbar.set
+		self.parentframe.rowconfigure(1,weight=1)
+		self.parentframe.columnconfigure(1,weight=1)
 
-	def drawCellEntry(self, row, col, text=None):
-		"""When the user single/double clicks on a text/number cell,
-		  bring up entry window and allow edits."""
+		self.rowindexheader.grid(row=0,column=0,rowspan=1,sticky='news')
+		self.tablecolheader.grid(row=0,column=1,rowspan=1,sticky='news')
+		self.rowheader.grid(row=1,column=0,rowspan=1,sticky='news')
+		self.grid(row=1,column=1,rowspan=1,sticky='news',pady=0,ipady=0)
 
-		if self.editable == False:
-			return
-		#These two lines are the difference between this custom class and the general class:
-		if col in self.non_editable_columns:
-			return
-		h = self.rowheight
-		model = self.model
-		text = self.model.getValueAt(row, col)
-		if pd.isnull(text):
-			text = ''
-		x1,y1,x2,y2 = self.getCellCoords(row,col)
-		w=x2-x1
-		self.cellentryvar = txtvar = tk.StringVar()
-		txtvar.set(text)
-
-		self.cellentry = ttk.Entry(self.parentframe,width=20,
-						textvariable=txtvar,
-						takefocus=1,
-						font=self.thefont)
-		self.cellentry.icursor(tk.END)
-		self.cellentry.bind('<Return>', lambda x: self.handleCellEntry(row,col))
-		self.cellentry.focus_set()
-		self.entrywin = self.create_window(x1,y1,
-								width=w,height=h,
-								window=self.cellentry,anchor='nw',
-								tag='entry')
+		self.adjustColumnWidths()
+		#bind redraw to resize, may trigger redraws when widgets added
+		self.parentframe.bind("<Configure>", self.resized) #self.redrawVisible)
+		self.tablecolheader.xview("moveto", 0)
+		self.xview("moveto", 0)
+		if self.showtoolbar == True:
+			self.toolbar = ToolBar(self.parentframe, self)
+			self.toolbar.grid(row=0,column=3,rowspan=2,sticky='news')
+		if self.showstatusbar == True:
+			self.statusbar = statusBar(self.parentframe, self)
+			self.statusbar.grid(row=3,column=0,columnspan=2,sticky='ew')
+		#self.redraw(callback=callback)
+		self.currwidth = self.parentframe.winfo_width()
+		self.currheight = self.parentframe.winfo_height()
+		if hasattr(self, 'pf'):
+			self.pf.updateData()
 		return
 			
 	def adjustColumnWidths(self, limit=30):
@@ -88,4 +99,18 @@ class CustomTable(pandastable.Table):
 			elif tw < self.cellwidth:
 				tw = self.cellwidth
 			self.columnwidths[colname] = tw
+		return
+		
+class CustomRowHeader(RowHeader):
+	def __init__(self, *args, **kwargs):
+		RowHeader.__init__(self, *args, **kwargs)
+	
+	def handle_right_click(self, event):
+		"""respond to a right click"""
+
+		self.delete('tooltip')
+		if hasattr(self, 'rightmenu'):
+			self.rightmenu.destroy()
+		#ITE: we don't want to allow menus
+		#self.rightmenu = self.popupMenu(event, outside=1)
 		return
