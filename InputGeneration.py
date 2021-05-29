@@ -1,5 +1,11 @@
 import pandas as pd
+import numpy as np
+import datetime
+import seaborn as sns
 import traceback
+import sys
+sys.path.append('C:/Users/admin/Documents/GitHub/LauncherClass')
+from CustomTable import CustomTable
 
 class AlphiaInputGenerator():
     def __init__(self, app):
@@ -335,6 +341,150 @@ class AlphiaInputGenerator():
         merge.name = "WO_DEMAND"
         #return dataframe
         return merge
+        
+    def generate_and_upload_model_files(self, BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters, Inventory, 
+                                        WorkCenters, MD_Bulk_Code, Finished_Good, Families):
+
+        #Model files generation and uploading
+
+        #1) Breakout
+        try:
+            BREAKOUT = self.generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good, Families)
+            print('Breakout table succesfully generated.')
+        except Exception as e:
+            print('Failed to generate Breakout table: ' + traceback.format_exc())
+            return 1
+        else:
+            try:
+                self.app.connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."BREAKOUT_FILE"')
+                #BREAKOUT.to_excel('Breakout_file.xlsx', index = False)
+                BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+                print('Breakout table succesfully uploaded to HANA.')
+            except Exception as e:
+                print('Failed to upload Breakout table to HANA: ' + traceback.format_exc())
+                return 1
+
+        #2) Packlines and extruders
+        try:
+            PACKLINES, EXTRUDERS = self.generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility, Finished_Good)
+            print('Packlines and Extruders tables succesfully generated.')
+        except Exception as e:
+            print('Failed to generate Packlines and Extruders tables: ' + traceback.format_exc())
+            return 1
+        else:
+            try:
+                self.app.connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."PACKLINES"')
+                #PACKLINES.to_excel('Packlines.xlsx', index = False)
+                PACKLINES.to_sql('packlines', schema = 'anylogic', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+                print('Packlines table succesfully uploaded to HANA.')
+            except Exception as e:
+                print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
+                return 1
+            try:
+                self.app.connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
+                #EXTRUDERS.to_excel('Extruders.xlsx', index = False)
+                EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = self.app.connection_to_HANA, if_exists ='append', index = False)
+                print('Extruders table succesfully uploaded to HANA.')
+            except Exception as e:
+                print('Failed to upload Extruders table to HANA: ' + traceback.format_exc())
+                return 1
+
+        #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
+        try:
+            global DEMAND
+            DEMAND, ERROR_DEMAND = self.generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority, Customer_Priority, BREAKOUT, PACKLINES, EXTRUDERS)
+            print('Demand table succesfully generated.')
+        except Exception as e:
+            print('Failed to generate Demand table: ' + traceback.format_exc())
+            return 1
+        else:
+            try:
+                self.app.connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
+                DEMAND.to_sql('demand', schema = 'anylogic', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+                print('Demand table succesfully uploaded to HANA.')
+                # DEMAND.to_excel('Demand.xlsx', index = False)
+            except Exception as e:
+                print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
+                return 1
+            try:
+                self.app.connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
+                ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+                print('Error demand table succesfully uploaded to HANA.')
+                #ERROR_DEMAND.to_excel('ERROR_DEMAND.xlsx', index = False)
+            except Exception as e:
+                print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
+                return 1
+
+        #4) Inventory bulk (must be created after Demand in order to validate)
+        try:
+            INVENTORY_BULK = self.generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, DEMAND, BREAKOUT)
+            print('Bulk inventory table succesfully generated.')
+        except Exception as e:
+            print('Failed to generate Inventory bulk table: ' + traceback.format_exc())
+            return 1
+        else:
+            try:
+                self.app.connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."BULK_INVENTORY"')
+                #INVENTORY_BULK.to_excel('Inventory_bulk.xlsx', index = False)
+                INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+                print('Bulk inventory table succesfully uploaded to HANA.')
+            except Exception as e:
+                print('Failed to upload Bulk inventory table to HANA: ' + traceback.format_exc())
+                return 1
+        
+        #5) WO Demand for SAC
+        try:
+            WO_DEMAND = self.generate_wo_demand(ItemMaster, WorkOrders)
+        except Exception as e:
+            print('Failed to generate WO Demand table: ' + traceback.format_exc())
+            return 1
+        else:
+            try:
+                self.app.connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
+                WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+            except Exception as e:
+                print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
+                return 1
+        
+        #6) Save upload time info
+        try:
+            self.app.connection_to_HANA.execute('DELETE FROM "SAGE"."LOG"')
+            time = pd.to_datetime(datetime.datetime.now())
+            total_demand = int(DEMAND['Demand quantity (pounds)'].sum())
+            pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+            print('Updated backup time successfully.')
+            self.app.display_info_widget['state'] = 'normal'
+            self.app.display_info_widget.delete('time_start', 'time_end')
+            self.app.display_info_widget.insert('time_start', f'{time.strftime("%d/%m/%y %H:%M")}')
+            self.app.display_info_widget.delete('total_demand_start', 'total_demand_end')
+            self.app.display_info_widget.insert('total_demand_start', f'{total_demand:,}')
+            self.app.display_info_widget['state'] = 'disabled'
+        except Exception as e:
+            print('Failed to update backup time: ' + traceback.format_exc())
+
+        if self.app.to_excel:
+            dic = {'BREAKOUT': ('DBInput/Breakout_file.xlsx', 'Breakout'),
+                'PACKLINES': ('DBInput/Packlines.xlsx', 'Packlines'),
+                'EXTRUDERS': ('DBInput/Extruders.xlsx', 'Extruders')}
+            for table in dic:
+                try:
+                    locals()[table].to_excel(dic[table][0], sheet_name = dic[table][1], index = False)
+                    print(f'{table} saved to Excel.')
+                except:
+                    print('Couldn\'t save table.')
+            EXTRUDERS_SCHEDULE = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = self.app.connection_to_HANA)
+            try:
+                with pd.ExcelWriter('DBInput/Demand.xlsx') as writer:
+                    DEMAND.to_excel(writer, sheet_name = 'Demand', index = False)
+                    INVENTORY_BULK.to_excel(writer, sheet_name = 'Bulk Inventory', index = False)
+                    EXTRUDERS_SCHEDULE.to_excel(writer, sheet_name = 'Extruders Schedule', index = False)
+                print('Demand saved to Excel.')
+            except:
+                print('Couldn\'t save to Excel.')
+
+        self.display_info(DEMAND, ERROR_DEMAND)
+
+        return 0
 
     def display_info(self, DEMAND, ERROR_DEMAND):
         df = DEMAND.copy()
@@ -345,16 +495,16 @@ class AlphiaInputGenerator():
         df = df.groupby('Week start', as_index = False).sum()
 
         plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
-                      estimator = sum, ci = None, ax = ax)
-        app.ax.xaxis_date()
+                      estimator = sum, ci = None, ax = self.app.ax)
+        self.app.ax.xaxis_date()
         x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
-        app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
+        self.app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
 
-        app.fig.canvas.draw_idle()
+        self.app.fig.canvas.draw_idle()
         # canvas.get_tk_widget().pack(anchor = 'w')
-        app.display_info_widget.window_create('end', window = canvas.get_tk_widget())
-        app.display_info_widget.insert('end', '\n\n\n')
+        self.app.display_info_widget.window_create('end', window = self.app.canvas.get_tk_widget())
+        self.app.display_info_widget.insert('end', '\n\n\n')
 
-        error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
+        error_demand_pt = CustomTable(self.app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
         error_demand_pt.adjustColumnWidths()
         error_demand_pt.show()

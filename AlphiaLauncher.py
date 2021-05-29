@@ -79,7 +79,7 @@ def show_start_info():
     x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
     app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
     app.fig.canvas.draw_idle()
-    app.display_info_widget.window_create('end', window = canvas.get_tk_widget())
+    app.display_info_widget.window_create('end', window = app.canvas.get_tk_widget())
     app.display_info_widget.insert('end', '\n\n')
     #Bring last error demand
     ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = app.connection_to_HANA)
@@ -150,8 +150,8 @@ right_notebook.tab(1, state = 'disabled')
 
 app.fig = Figure(figsize = (10,4), tight_layout = True)
 app.ax = app.fig.add_subplot(111)
-canvas = FigureCanvasTkAgg(app.fig, master = app.display_info_widget)
-canvas.draw()
+app.canvas = FigureCanvasTkAgg(app.fig, master = app.display_info_widget)
+app.canvas.draw()
 
 app.statusbar['text'] = 'Establishing connection to cloud database...'
 
