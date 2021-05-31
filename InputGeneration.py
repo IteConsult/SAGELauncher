@@ -4,7 +4,8 @@ import datetime
 import seaborn as sns
 import traceback
 import sys
-sys.path.append('C:/Users/admin/Documents/GitHub/LauncherClass')
+import os
+sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 from CustomTable import CustomTable
 
 class AlphiaInputGenerator():

@@ -9,8 +9,9 @@ import pandas as pd
 import datetime
 import seaborn as sns
 import sys
+import os
+sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 import threading
-sys.path.append('C:/Users/admin/Documents/GitHub/LauncherClass')
 from Launcher import Launcher
 from CustomTable import CustomTable
 from ManualInput import (LoadingWindow, ManualInput)
@@ -105,7 +106,7 @@ def update_db_from_SAGE_command():
 def generate_model_files_from_backup_command():
     loading_window_backup = LoadingWindow(app.root, input_generator.generate_model_files_from_backup)
 
-app = Launcher('ALPHIA')
+app = Launcher('DETAILED SCHEDULING OPTIMIZATION')
 app.root.state('zoomed')
 app.root.minsize(1520, 700)
 
