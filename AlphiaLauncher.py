@@ -149,6 +149,7 @@ app.error_demand_frm = ttk.Frame(right_notebook)
 right_notebook.add(app.error_demand_frm, text = '  Error Demand   ', padding = 15)
 right_notebook.tab(1, state = 'disabled')
 
+sns.set_style('dark')
 app.fig = Figure(figsize = (10,4), tight_layout = True)
 app.ax = app.fig.add_subplot(111)
 app.canvas = FigureCanvasTkAgg(app.fig, master = app.display_info_widget)
