@@ -7,6 +7,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 from CustomTable import CustomTable
+import tkinter as tk
 
 class AlphiaInputGenerator():
     def __init__(self, app):
@@ -450,16 +451,12 @@ class AlphiaInputGenerator():
         #6) Save upload time info
         try:
             self.app.connection_to_HANA.execute('DELETE FROM "SAGE"."LOG"')
-            time = pd.to_datetime(datetime.datetime.now())
-            total_demand = int(DEMAND['Demand quantity (pounds)'].sum())
-            pd.DataFrame({'TIME': [time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
+            last_time = pd.to_datetime(datetime.datetime.now())
+            total_demand = round(DEMAND['Demand quantity (pounds)'].sum(),2)
+            pd.DataFrame({'TIME': [last_time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
             print('Updated backup time successfully.')
-            self.app.display_info_widget['state'] = 'normal'
-            self.app.display_info_widget.delete('time_start', 'time_end')
-            self.app.display_info_widget.insert('time_start', f'{time.strftime("%d/%m/%y %H:%M")}')
-            self.app.display_info_widget.delete('total_demand_start', 'total_demand_end')
-            self.app.display_info_widget.insert('total_demand_start', f'{total_demand:,}')
-            self.app.display_info_widget['state'] = 'disabled'
+            self.app.total_demand_str.set(str(total_demand))
+            self.app.last_update_str.set(last_time.strftime("%d/%m/%y %H:%M"))
         except Exception as e:
             print('Failed to update backup time: ' + traceback.format_exc())
 
@@ -502,9 +499,7 @@ class AlphiaInputGenerator():
         self.app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
 
         self.app.fig.canvas.draw_idle()
-        # canvas.get_tk_widget().pack(anchor = 'w')
-        self.app.display_info_widget.window_create('end', window = self.app.canvas.get_tk_widget())
-        self.app.display_info_widget.insert('end', '\n\n\n')
+        self.app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
 
         error_demand_pt = CustomTable(self.app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False)
         error_demand_pt.adjustColumnWidths()
