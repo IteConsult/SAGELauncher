@@ -32,8 +32,27 @@ def connectToHANA(app):
             return 'Connection to cloud database failed! Retrying...'
 
 def add_manual_input(app):
-    manual_window = ManualInput(app, 
-                    extruders_schedule = 'Extruders Schedule', families = 'Families', product_priority = 'Product Priority', customer_priority = 'Customer Priority', )
+    lw = LoadingWindow(app)
+    manual_window = ManualInput(app)
+    load_tables_thread = threading.Thread(target = load_tables, args = (manual_window,), daemon = True)
+    load_tables_thread.start()
+    app.root.after(0, show_manual_window, app, manual_window, load_tables_thread, lw)    
+    # lw.check(load_tables_thread, final_command = lambda: manual_window.show())
+    
+def load_tables(manual_window):
+    manual_window.add_table('Extruders Schedule', 'extruders_schedule')
+    manual_window.add_table('Families', 'families')
+    manual_window.add_table('Product Priority', 'product_priority')
+    manual_window.add_table('Customer Priority', 'customer_priority')
+    
+def show_manual_window(app, manual_window, load_tables_thread, lw):
+    if load_tables_thread.is_alive():
+        print('not yet')
+        app.root.after(500, show_manual_window, app, manual_window, load_tables_thread, lw)
+    else:
+        print('now, show')
+        lw.destroy()
+        manual_window.show()
 
 def startup():
     connected = False
@@ -55,25 +74,6 @@ def show_start_info():
     except:
         app.last_update_str.set('Couldn\'t retrieve information.')
         app.total_demand_str.set('Couldn\'t retrieve information.')
-    # app.display_info_widget['state'] = 'normal'
-    # display_info_widget.mark_set('demand_info_start', tk.INSERT)
-    # display_info_widget.mark_gravity('demand_info_start', 'left')
-    # app.display_info_widget.insert('end', f'    Time of cloud database last update from REST services: ')
-    # app.display_info_widget.mark_set('time_start', tk.INSERT)
-    # app.display_info_widget.mark_gravity('time_start', 'left')
-    # app.display_info_widget.insert('end', f'{time.strftime("%d/%m/%y %H:%M")}')
-    # app.display_info_widget.mark_set('time_end', tk.INSERT)
-    # app.display_info_widget.mark_gravity('time_end', 'left')
-    # app.display_info_widget.insert('end', '.\n\n    Total demand quantity: ')
-    # app.display_info_widget.mark_set('total_demand_start', tk.INSERT)
-    # app.display_info_widget.mark_gravity('total_demand_start', tk.LEFT)
-    # app.display_info_widget.insert('end', f'{total_demand:,}')
-    # app.display_info_widget.mark_set('total_demand_end', tk.INSERT)
-    # app.display_info_widget.mark_gravity('total_demand_end', tk.LEFT)
-    # app.display_info_widget.insert('end', '.\n\n')
-    # display_info_widget.mark_set('demand_info_end', tk.INSERT)
-    # display_info_widget.mark_gravity('demand_info_start', 'left')
-    # app.display_info_widget['state'] = 'disabled'
     #Displaying demand graphic
     df = pd.read_sql_table('demand', schema = 'anylogic', con = app.connection_to_HANA).astype({'Demand quantity (pounds)': float})
     df['Due date'] = pd.to_datetime(df['Due date'])
@@ -86,8 +86,6 @@ def show_start_info():
     app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
     app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
     app.fig.canvas.draw_idle()
-    # app.display_info_widget.window_create('end', window = app.canvas.get_tk_widget())
-    # app.display_info_widget.insert('end', '\n\n')
     #Bring last error demand
     ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = app.connection_to_HANA)
     error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
@@ -107,7 +105,10 @@ def wait_startup():
         threading.Thread(target = lambda: show_start_info(), daemon = True).start()
 
 def update_db_from_SAGE_command():
-    loading_window_from_SAGE = LoadingWindow(app.root, input_generator.update_db_from_SAGE)
+    lw = LoadingWindow(app)
+    t = threading.Thread(target = input_generator.update_db_from_SAGE, daemon = True)
+    t.start()
+    app.root.after(0, lw.check, t)
 
 def generate_model_files_from_backup_command():
     loading_window_backup = LoadingWindow(app.root, input_generator.generate_model_files_from_backup)
@@ -122,7 +123,7 @@ app.to_excel = False
 app.connection_to_HANA = None
 input_generator = AlphiaInputGenerator(app)
 
-app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input())
+app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input(app))
 app.read_data_btn['state'] = 'disabled'
 app.manual_data_btn['state'] = 'disabled'
 app.add_model_lf('AlphiaVisual')
