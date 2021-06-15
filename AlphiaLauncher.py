@@ -12,9 +12,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 import threading
-from Launcher import Launcher
+from Launcher import Launcher, LoadingWindow
 from CustomTable import CustomTable
-from ManualInput import (LoadingWindow, ManualInput)
+from ManualInput import ManualInput
 import traceback
 from InputGeneration import * #TODO list functions
 
@@ -186,6 +186,8 @@ app.canvas = FigureCanvasTkAgg(app.fig, master = app.grafic_lf)
 app.canvas.draw()
 
 app.statusbar['text'] = 'Establishing connection to cloud database...'
+
+app.add_logo()
 
 startup_thread = threading.Thread(target = startup, daemon = True)
 startup_thread.start()
