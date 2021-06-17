@@ -17,6 +17,7 @@ from CustomTable import CustomTable
 from ManualInput import ManualInput
 import traceback
 from InputGeneration import * #TODO list functions
+import subprocess
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
@@ -126,7 +127,23 @@ input_generator = AlphiaInputGenerator(app)
 app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input(app))
 app.read_data_btn['state'] = 'disabled'
 app.manual_data_btn['state'] = 'disabled'
-app.add_model_lf('AlphiaVisual')
+
+app.add_model_lf()
+
+def run_simulation_cmd():
+    lw = LoadingWindow(app)
+    th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-simulation.bat',))
+    th.start()
+    lw.check(th)
+    
+def run_optimization_cmd():
+    lw = LoadingWindow(app)
+    th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-optimization.bat',))
+    th.start()
+    lw.check(th)
+
+app.run_simulation_btn['command'] = lambda: run_simulation_cmd()
+app.run_optimization_btn['command'] = lambda: run_optimization_cmd()
 
 buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',
               'MASTER DATA ERRORS': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
