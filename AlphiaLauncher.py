@@ -18,6 +18,8 @@ from ManualInput import ManualInput
 import traceback
 from InputGeneration import * #TODO list functions
 import subprocess
+import queue
+import collections
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
@@ -35,25 +37,25 @@ def connectToHANA(app):
 def add_manual_input(app):
     lw = LoadingWindow(app)
     manual_window = ManualInput(app)
-    load_tables_thread = threading.Thread(target = load_tables, args = (manual_window,), daemon = True)
+    load_tables_thread = threading.Thread(target = load_tables, args = (manual_window, app.q), daemon = True)
     load_tables_thread.start()
-    app.root.after(0, show_manual_window, app, manual_window, load_tables_thread, lw)    
-    # lw.check(load_tables_thread, final_command = lambda: manual_window.show())
+    app.root.after(0, lw.check, load_tables_thread, manual_window.show)
     
-def load_tables(manual_window):
-    manual_window.add_table('Extruders Schedule', 'extruders_schedule')
-    manual_window.add_table('Families', 'families')
-    manual_window.add_table('Product Priority', 'product_priority')
-    manual_window.add_table('Customer Priority', 'customer_priority')
-    
-def show_manual_window(app, manual_window, load_tables_thread, lw):
-    if load_tables_thread.is_alive():
-        print('not yet')
-        app.root.after(500, show_manual_window, app, manual_window, load_tables_thread, lw)
-    else:
-        print('now, show')
-        lw.destroy()
-        manual_window.show()
+def load_tables(manual_window, q):
+    try:
+        q.append('Loading Extruders Schedule')
+        manual_window.add_table('Extruders Schedule', 'extruders_schedule')
+        q.append('Loading Families')
+        manual_window.add_table('Families', 'families')
+        q.append('Loading Product Priority')
+        manual_window.add_table('Product Priority', 'product_priority')
+        q.append('Loading Customer Priority')
+        manual_window.add_table('Customer Priority', 'customer_priority')
+    except:
+        a = traceback.format_exception_only(*sys.exc_info()[:2])
+        print('error: ', a)
+        print(type(a))
+        q.append(a)
 
 def startup():
     connected = False
@@ -101,7 +103,7 @@ def show_start_info():
 
 def wait_startup():
     if startup_thread.is_alive():
-        app.root.after(2000, wait_startup)
+        app.root.after(1000, wait_startup)
     else:
         threading.Thread(target = lambda: show_start_info(), daemon = True).start()
 
@@ -122,6 +124,10 @@ app.root.minsize(1520, 700)
 app.to_excel = False
 #Connection
 app.connection_to_HANA = None
+#Queue (para almacenar errores/logs en los procesos que se ejecutan en threads)
+app.q = collections.deque(maxlen = 1)
+
+#Input generator (es necesario?)
 input_generator = AlphiaInputGenerator(app)
 
 app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input(app))
@@ -184,19 +190,12 @@ ttk.Label(labels_right_frame, textvariable = app.total_demand_str).pack(anchor =
 app.grafic_lf = ttk.LabelFrame(display_info_frm, text = '   DEMAND PER WEEK')
 app.grafic_lf.pack(anchor = 'n', padx = 20, pady = 20, fill = tk.X, expand = True)
 
-# app.display_info_widget = tk.Text(display_info_frm, wrap = 'word', state = 'disabled', relief = tk.FLAT, bg = 'white smoke')
-# app.display_info_widget.pack(fill = tk.BOTH, expand = True, side = tk.LEFT, padx = (20, 0), pady = 20)
-# display_info_ys = ttk.Scrollbar(display_info_frm, orient = 'vertical', command = app.display_info_widget.yview)
-# display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
-# app.display_info_widget['yscrollcommand'] = display_info_ys.set
-
 app.error_demand_frm = ttk.Frame(right_notebook)
 right_notebook.add(app.error_demand_frm, text = '  Error Demand   ', padding = 15)
 right_notebook.tab(1, state = 'disabled')
 
 sns.set_style('whitegrid', {'figure.facecolor': 'whitesmoke'})
 
-#print(sns.axes_style())
 app.fig = Figure(figsize = (10,4), tight_layout = True)
 app.ax = app.fig.add_subplot(111)
 app.canvas = FigureCanvasTkAgg(app.fig, master = app.grafic_lf)
