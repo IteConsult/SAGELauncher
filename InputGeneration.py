@@ -224,14 +224,18 @@ class AlphiaInputGenerator():
         #Bring Model plant column
         DEMAND = DEMAND.merge(Model_WorkCenters[['WorkCenter', 'Model plant']], on = 'WorkCenter', how = 'left')
         #Keep only FG with packing rate in plant
-        DEMAND['in_packlines'] = DEMAND['ItemNumber'].isin(PACKLINES['Finished good'].unique())
-        NOT_IN_PACKLINES = DEMAND.query('in_packlines == False').copy()
+        DEMAND = DEMAND.merge(PACKLINES[['Finished good', 'Plant']].groupby(['Finished good', 'Plant'], as_index = False).first(), left_on = ['ItemNumber', 'Model plant'], right_on = ['Finished good', 'Plant'], how = 'left', indicator = True)
+        # DEMAND['in_packlines'] = DEMAND['ItemNumber'].isin(PACKLINES['Finished good'].unique())
+        # NOT_IN_PACKLINES = DEMAND.query('in_packlines == False').copy()
+        NOT_IN_PACKLINES = DEMAND.query('_merge == \'left_only\'').copy()
         NOT_IN_PACKLINES = NOT_IN_PACKLINES.merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         NOT_IN_PACKLINES['Rejected Pounds'] = NOT_IN_PACKLINES['Demand quantity (pounds)'].astype(float) * NOT_IN_PACKLINES['Blend percentage'].astype(float)
-        NOT_IN_PACKLINES.rename({'WorkOrderNumber': 'Work Order', 'Finished good': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
+        NOT_IN_PACKLINES.rename({'WorkOrderNumber': 'Work Order', 'ItemNumber': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
         NOT_IN_PACKLINES['Cause'] = 'Finished good has no packing rate'
         NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
-        DEMAND = DEMAND.query('in_packlines == True').copy()
+        # DEMAND = DEMAND.query('in_packlines == True').copy()
+        DEMAND = DEMAND.query('_merge == \'both\'').copy()
+        DEMAND.drop(['Finished good', 'Plant'], axis = 1, inplace = True)
         #TODO traer el Customer cuando lo manden los de Alphia
         DEMAND['Customer'] = '0'
         #TODO traer la Formula cuando la manden los de Alphia
@@ -274,7 +278,6 @@ class AlphiaInputGenerator():
         INVENTORY_BULK.dropna(subset = ['ItemWeight'], inplace = True)
         INVENTORY_BULK['Quantity'] = INVENTORY_BULK['StockQuantity'].astype(float) * INVENTORY_BULK['ItemWeight'].astype(float)
         INVENTORY_BULK = INVENTORY_BULK.groupby(['ItemNumber', 'Facility']).sum().reset_index().rename({'ItemNumber': 'Component formula'}, axis = 1)
-
         VALIDATION = DEMAND[['Finished good', 'Facility', 'Demand quantity (pounds)']].groupby(['Finished good', 'Facility']).sum().reset_index()
         VALIDATION = VALIDATION.merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], on = 'Finished good', how = 'left')
         VALIDATION['Quantity'] = VALIDATION['Demand quantity (pounds)'].astype(float) * VALIDATION['Blend percentage'].astype(float)

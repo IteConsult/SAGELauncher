@@ -35,27 +35,24 @@ def connectToHANA(app):
             return 'Connection to cloud database failed! Retrying...'
 
 def add_manual_input(app):
-    lw = LoadingWindow(app)
-    manual_window = ManualInput(app)
-    load_tables_thread = threading.Thread(target = load_tables, args = (manual_window, app.q), daemon = True)
+    app.lw = LoadingWindow(app)
+    app.manual_window = ManualInput(app)
+    load_tables_thread = threading.Thread(target = load_tables, args = (app,), daemon = True)
     load_tables_thread.start()
-    app.root.after(0, lw.check, load_tables_thread, manual_window.show)
+    app.root.after(0, app.lw.check, load_tables_thread, app.manual_window.show)
     
-def load_tables(manual_window, q):
+def load_tables(app):
     try:
-        q.append('Loading Extruders Schedule')
-        manual_window.add_table('Extruders Schedule', 'extruders_schedule')
-        q.append('Loading Families')
-        manual_window.add_table('Families', 'families')
-        q.append('Loading Product Priority')
-        manual_window.add_table('Product Priority', 'product_priority')
-        q.append('Loading Customer Priority')
-        manual_window.add_table('Customer Priority', 'customer_priority')
+        app.q.append('Loading Extruders Schedule')
+        app.manual_window.add_table('Extruders Schedule', 'extruders_schedule')
+        app.q.append('Loading Families')
+        app.manual_window.add_table('Families', 'families')
+        app.q.append('Loading Product Priority')
+        app.manual_window.add_table('Product Priority', 'product_priority')
+        app.q.append('Loading Customer Priority')
+        app.manual_window.add_table('Customer Priority', 'customer_priority')
     except:
-        a = traceback.format_exception_only(*sys.exc_info()[:2])
-        print('error: ', a)
-        print(type(a))
-        q.append(a)
+        app.lw.register_error()
 
 def startup():
     connected = False
@@ -137,16 +134,16 @@ app.manual_data_btn['state'] = 'disabled'
 app.add_model_lf()
 
 def run_simulation_cmd():
-    lw = LoadingWindow(app)
+    # lw = LoadingWindow(app)
     th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-simulation.bat',))
     th.start()
-    lw.check(th)
+    # lw.check(th)
     
 def run_optimization_cmd():
-    lw = LoadingWindow(app)
+    # lw = LoadingWindow(app)
     th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-optimization.bat',))
     th.start()
-    lw.check(th)
+    # lw.check(th)
 
 app.run_simulation_btn['command'] = lambda: run_simulation_cmd()
 app.run_optimization_btn['command'] = lambda: run_optimization_cmd()
@@ -154,7 +151,7 @@ app.run_optimization_btn['command'] = lambda: run_optimization_cmd()
 buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',
               'MASTER DATA ERRORS': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
               'RUN SUMMARY': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9',
-              'SCHEDULE REVIEW (!)': 'http://www.google.com/',
+              'SCHEDULE REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=C316E302FA989EB6B8DC0A7147C612B1',
               'REPORT CATALOG': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog',
               'SCHEDULE DETAIL': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9',
               }
