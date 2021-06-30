@@ -7,6 +7,6 @@ How to open database in external tools:
 3. Ensure the tool has hsqldb.jar driver installed (if no, use this one: lib/database/hsqldb.jar)
 4. Connect to the database using the following url:
 
-jdbc:hsqldb:file:/Users/elisaelena/Documents/Trabajo/Anylogic/Models/CJFoods Exported.40/database/db
+jdbc:hsqldb:file:/Users/elisaelena/Documents/Trabajo/Anylogic/Models/CJFoods Exported.5.0/database/db
 
 5. After finished, disconnect the tool and run the model if needed.
