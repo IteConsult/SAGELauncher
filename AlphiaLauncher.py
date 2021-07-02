@@ -49,10 +49,11 @@ def load_tables(app):
         app.manual_window.add_table('Families', 'families')
         app.q.append('Loading Product Priority')
         app.manual_window.add_table('Product Priority', 'product_priority')
+        1/0
         app.q.append('Loading Customer Priority')
         app.manual_window.add_table('Customer Priority', 'customer_priority')
-    except:
-        app.lw.register_error()
+    except Exception as e:
+        app.register_error('Couldn\'t load tables.', e)
 
 def startup():
     connected = False
@@ -122,7 +123,7 @@ app.to_excel = False
 #Connection
 app.connection_to_HANA = None
 #Queue (para almacenar errores/logs en los procesos que se ejecutan en threads)
-app.q = collections.deque(maxlen = 1)
+# app.q = collections.deque(maxlen = 1)
 
 #Input generator (es necesario?)
 input_generator = AlphiaInputGenerator(app)

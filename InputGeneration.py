@@ -14,65 +14,71 @@ class AlphiaInputGenerator():
         self.app = app
 
     def update_db_from_SAGE(self):
-        print('update_db_from_SAGE function called.')
+        try:
+            # print('update_db_from_SAGE function called.')
 
-        #Connect to HANA
-        if not self.app.connection_to_HANA:
-            print('Can\'t connect to database.')
-            return 1
+            #Connect to HANA
+            # if not self.app.connection_to_HANA:
+                # print('Can\'t connect to database.')
+                # return 1
 
-        table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
-                  'Inventory': r'http://10.4.240.65/api/IntegrationAPI/GetInventory',
-                  'Facility': r'http://10.4.240.65/api/IntegrationAPI/GetItemFacility',
-                  'ItemMaster': r'http://10.4.240.65/api/IntegrationAPI/GetItemMstr',
-                  'RoutingAndRates': r'http://10.4.240.65/api/IntegrationAPI/GetRoutingAndRates',
-                  'WorkCenters': r'http://10.4.240.65/api/IntegrationAPI/GetWorkCenters',
-                  'WorkOrders': r'http://10.4.240.65/api/IntegrationAPI/GetWorkOrders'}
+            table_urls = {'BOM': r'http://10.4.240.65/api/IntegrationAPI/GetBOM',
+                      'Inventory': r'http://10.4.240.65/api/IntegrationAPI/GetInventory',
+                      'Facility': r'http://10.4.240.65/api/IntegrationAPI/GetItemFacility',
+                      'ItemMaster': r'http://10.4.240.65/api/IntegrationAPI/GetItemMstr',
+                      'RoutingAndRates': r'http://10.4.240.65/api/IntegrationAPI/GetRoutingAndRates',
+                      'WorkCenters': r'http://10.4.240.65/api/IntegrationAPI/GetWorkCenters',
+                      'WorkOrders': r'http://10.4.240.65/api/IntegrationAPI/GetWorkOrders'}
 
-        #Reads tables from REST services
-        for table in table_urls:
-            if self.app.connection_to_HANA:
+            #Reads tables from REST services
+            for table in table_urls:
+                self.app.q.append(f'Reading {table}')
                 try:
                     globals()[table] = pd.read_json(table_urls[table], dtype = str)
                     print(f'Table {table} succesfully loaded.')
                 except Exception as e:
                     print(f'Couldn\'t load table {table}: ' + traceback.format_exc())
+                    self.app.register_error(f'Couldn\'t load table {table}: ', e)
                     #loading_window.destroy()
                     return 1
                     #try to read backup from HANA?
-            else:
-                return 1
 
-        #Upload raw SAGE tables into HANA
-        for table in table_urls:
-            try:
-                self.app.connection_to_HANA.execute(f'DELETE FROM "SAGE".{table}')
-                globals()[table].to_sql(table.lower(), con = self.app.connection_to_HANA, if_exists = 'append', index = False, schema = 'sage')
-                print(f'Table {table} was uploaded to HANA succesfully.')
-            except Exception as e:
-                print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
-                #loading_window.destroy()
-                return 1
+            #Upload raw SAGE tables into HANA
+            for table in table_urls:
+                self.app.q.append(f'Updating {table} in cloud database')
+                try:
+                    self.app.connection_to_HANA.execute(f'DELETE FROM "SAGE".{table}')
+                    globals()[table].to_sql(table.lower(), con = self.app.connection_to_HANA, if_exists = 'append', index = False, schema = 'sage')
+                    print(f'Table {table} was uploaded to HANA succesfully.')
+                except Exception as e:
+                    print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
+                    self.app.register_error(f'Couldn\'t save {table} table into HANA. ', e)
+                    #loading_window.destroy()
+                    return 1
 
-        #Read manual files from HANA
-        manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families']
+            #Read manual files from HANA
+            manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families']
 
-        for table in manual_files:
-            try:
-                globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = self.app.connection_to_HANA).astype(str)
-                print(f'Table {table} succesfully read from HANA.')
-            except Exception as e:
-                print('Couldn\'t read table {table} from HANA. ' + traceback.format_exc())
-                #loading_window.destroy()
-                return 1
+            for table in manual_files:
+                self.app.q.append(f'Loading {table}')
+                try:
+                    globals()[table] = pd.read_sql_table(table.lower(), schema = 'manual_files', con = self.app.connection_to_HANA).astype(str)
+                    print(f'Table {table} succesfully read from HANA.')
+                except Exception as e:
+                    print('Couldn\'t read table {table} from HANA. ' + traceback.format_exc())
+                    self.app.register_error('Couldn\'t read table {table} from HANA. ', e)
+                    #loading_window.destroy()
+                    return 1
 
-        s_code = self.generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters,
-                                                    Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families)
+            s_code = self.generate_and_upload_model_files(BOM, ItemMaster, Facility, RoutingAndRates, WorkOrders, Model_WorkCenters,
+                                                        Inventory, WorkCenters, MD_Bulk_Code, Finished_Good, Families)
 
-        print(f'generate_model_files_from_backup function finished with code {s_code}.')
+            # print(f'generate_model_files_from_backup function finished with code {s_code}.')
 
-        #loading_window.destroy()
-        return s_code
+            #loading_window.destroy()
+            return s_code
+        except Exception as e:
+            self.app.register_error('', e)
 
     def generate_breakout_file(self, BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good, Families):
         #Merging with ItemMaster
@@ -354,6 +360,7 @@ class AlphiaInputGenerator():
 
         #1) Breakout
         try:
+            self.app.q.append('Generating Breakout table')
             BREAKOUT = self.generate_breakout_file(BOM, ItemMaster, Facility, MD_Bulk_Code, Finished_Good, Families)
             print('Breakout table succesfully generated.')
         except Exception as e:
@@ -371,6 +378,7 @@ class AlphiaInputGenerator():
 
         #2) Packlines and extruders
         try:
+            self.app.q.append('Generating Packlines and Extruders tables')
             PACKLINES, EXTRUDERS = self.generate_packlines_and_extruders(RoutingAndRates, ItemMaster, Model_WorkCenters, Facility, Finished_Good)
             print('Packlines and Extruders tables succesfully generated.')
         except Exception as e:
@@ -384,6 +392,7 @@ class AlphiaInputGenerator():
                 print('Packlines table succesfully uploaded to HANA.')
             except Exception as e:
                 print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
+                self.app.register_error('Failed to upload Packlines table to HANA: ', e)
                 return 1
             try:
                 self.app.connection_to_HANA.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
@@ -392,15 +401,17 @@ class AlphiaInputGenerator():
                 print('Extruders table succesfully uploaded to HANA.')
             except Exception as e:
                 print('Failed to upload Extruders table to HANA: ' + traceback.format_exc())
+                self.app.register_error('Failed to upload Extruders table to HANA: ', e)
                 return 1
 
         #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
         try:
-            global DEMAND
+            # global DEMAND
+            self.app.q.append('Generating Demand table')
             DEMAND, ERROR_DEMAND = self.generate_demand(WorkOrders, ItemMaster, Model_WorkCenters, Product_Priority, Customer_Priority, BREAKOUT, PACKLINES, EXTRUDERS)
             print('Demand table succesfully generated.')
         except Exception as e:
-            print('Failed to generate Demand table: ' + traceback.format_exc())
+            self.app.register_error('Failed to generate Demand table: ' , e)
             return 1
         else:
             try:
@@ -410,6 +421,7 @@ class AlphiaInputGenerator():
                 # DEMAND.to_excel('Demand.xlsx', index = False)
             except Exception as e:
                 print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
+                self.app.register_error('Failed to upload Demand table to HANA: ' + traceback.format_exc())
                 return 1
             try:
                 self.app.connection_to_HANA.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
@@ -418,14 +430,17 @@ class AlphiaInputGenerator():
                 #ERROR_DEMAND.to_excel('ERROR_DEMAND.xlsx', index = False)
             except Exception as e:
                 print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
+                self.app.register_error('Failed to upload Error demand table to HANA: ', q)
                 return 1
 
         #4) Inventory bulk (must be created after Demand in order to validate)
         try:
+            self.app.q.append('Generating Bulk Inventory table')
             INVENTORY_BULK = self.generate_inventory_bulk(Inventory, ItemMaster, Facility, Model_WorkCenters, DEMAND, BREAKOUT)
             print('Bulk inventory table succesfully generated.')
         except Exception as e:
             print('Failed to generate Inventory bulk table: ' + traceback.format_exc())
+            self.app.register_error('Failed to generate Inventory bulk table: ', e)
             return 1
         else:
             try:
@@ -435,13 +450,16 @@ class AlphiaInputGenerator():
                 print('Bulk inventory table succesfully uploaded to HANA.')
             except Exception as e:
                 print('Failed to upload Bulk inventory table to HANA: ' + traceback.format_exc())
+                self.app.register_error('Failed to upload Bulk inventory table to HANA: ', e)
                 return 1
         
         #5) WO Demand for SAC
         try:
+            self.app.q.append('Generating WO Demand')
             WO_DEMAND = self.generate_wo_demand(ItemMaster, WorkOrders)
         except Exception as e:
             print('Failed to generate WO Demand table: ' + traceback.format_exc())
+            self.app.register_error('Failed to generate WO Demand table: ', e)
             return 1
         else:
             try:
@@ -449,6 +467,7 @@ class AlphiaInputGenerator():
                 WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = self.app.connection_to_HANA, if_exists = 'append', index = False)
             except Exception as e:
                 print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
+                self.app.register_error('Failed to upload WO Demand table to HANA: ', e)
                 return 1
         
         #6) Save upload time info
@@ -462,11 +481,13 @@ class AlphiaInputGenerator():
             self.app.last_update_str.set(last_time.strftime("%d/%m/%y %H:%M"))
         except Exception as e:
             print('Failed to update backup time: ' + traceback.format_exc())
+            self.app.register_error('Failed to update backup time: ', e)
 
         if self.app.to_excel:
-            dic = {'BREAKOUT': ('DBInput/Breakout_file.xlsx', 'Breakout'),
-                'PACKLINES': ('DBInput/Packlines.xlsx', 'Packlines'),
-                'EXTRUDERS': ('DBInput/Extruders.xlsx', 'Extruders')}
+            self.app.q.append('Saving tables as Excel files')
+            dic = {'BREAKOUT': ('DBInappend/Breakout_file.xlsx', 'Breakout'),
+                'PACKLINES': ('DBInappend/Packlines.xlsx', 'Packlines'),
+                'EXTRUDERS': ('DBInappend/Extruders.xlsx', 'Extruders')}
             for table in dic:
                 try:
                     locals()[table].to_excel(dic[table][0], sheet_name = dic[table][1], index = False)
@@ -475,13 +496,14 @@ class AlphiaInputGenerator():
                     print('Couldn\'t save table.')
             EXTRUDERS_SCHEDULE = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = self.app.connection_to_HANA)
             try:
-                with pd.ExcelWriter('DBInput/Demand.xlsx') as writer:
+                with pd.ExcelWriter('DBInappend/Demand.xlsx') as writer:
                     DEMAND.to_excel(writer, sheet_name = 'Demand', index = False)
                     INVENTORY_BULK.to_excel(writer, sheet_name = 'Bulk Inventory', index = False)
                     EXTRUDERS_SCHEDULE.to_excel(writer, sheet_name = 'Extruders Schedule', index = False)
                 print('Demand saved to Excel.')
-            except:
-                print('Couldn\'t save to Excel.')
+            except Exception as e:
+                print('Couldn\'t save to Excel: ' + traceback.format_exc())
+                self.app.register_error('Couldn\'t save to Excel.', e)
 
         self.display_info(DEMAND, ERROR_DEMAND)
 
