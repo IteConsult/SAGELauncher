@@ -1,10 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+
 block_cipher = None
 
 
 a = Analysis(['AlphiaLauncher.py'],
-             pathex=['C:\\Users\\admin\\Documents\\GitHub\\SAGELauncher'],
+             pathex=['C:\\Users\\egabr\\OneDrive\\Documents\\GitHub\\SAGELauncher'],
              binaries=[],
              datas=[],
              hiddenimports=[],
@@ -30,4 +31,4 @@ exe = EXE(pyz,
           upx=True,
           upx_exclude=[],
           runtime_tmpdir=None,
-          console=False )
+          console=True )
