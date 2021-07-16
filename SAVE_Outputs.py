@@ -11,7 +11,7 @@ sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHD
 
 def connectToHANA():
     try:
-        connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:HANAtest2908@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
+        connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
         print('Connection established.')
     except Exception as e:
         print('Connection failed! ' + str(e))

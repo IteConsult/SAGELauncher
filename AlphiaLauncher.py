@@ -118,9 +118,13 @@ app.root.state('zoomed')
 app.root.minsize(1520, 700)
 
 #Debug variable
-app.to_excel = False
+app.to_excel = True
 #Connection
 app.connection_to_HANA = None
+#HANA dictionary
+##TODO
+#BigQuery dictionary
+##TODO
 
 #Input generator (es necesario?)
 input_generator = AlphiaInputGenerator(app)
