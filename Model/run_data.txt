@@ -1,17 +1,34 @@
 +-+-+ Alphia Simulation Run Data +-+-+
 
 Version: 2.9.3-for-Launcher-test
-Run date: 29-06-2021
-Run start time: 12:41:05.733745800
-Run end time: 12:42:21.838385800
-Total run time: 0:1:16
+Run date: 12-07-2021
+Run start time: 16:08:10.285553500
+Run end time: 16:08:54.691626600
+Total run time: 0:0:44
 
-Production start date: 1-7-2021
-Production end date: 3-7-2021
+Production start date: 20-6-2021
+Production end date: 15-7-2022
 
-Days substracted from raw material date: 0
+Days substracted from raw material date: 15
 Days added to raw material date: 0
 Days substracted from due date: 0
-Days added to due date: 0
+Days added to due date: 15
+
+Machine schedule: Not activated
++-+-+ Alphia Simulation Run Data +-+-+
+
+Version: 2.9.3-for-Launcher-test
+Run date: 12-07-2021
+Run start time: 16:09:02.637002800
+Run end time: 16:10:41.451466200
+Total run time: 0:1:38
+
+Production start date: 20-6-2021
+Production end date: 15-7-2021
+
+Days substracted from raw material date: 15
+Days added to raw material date: 0
+Days substracted from due date: 0
+Days added to due date: 15
 
 Machine schedule: Not activated

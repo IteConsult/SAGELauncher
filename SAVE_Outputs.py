@@ -3,6 +3,7 @@ import sqlalchemy
 import sqlalchemy_hana
 import sqlalchemy_hana.dialect
 import datetime
+import numpy as np
 
 to_excel = False
 
@@ -10,7 +11,7 @@ sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHD
 
 def connectToHANA():
     try:
-        connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:HANAtest2908@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
+        connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
         print('Connection established.')
     except Exception as e:
         print('Connection failed! ' + str(e))
@@ -246,8 +247,23 @@ def unpacked(out_due_date_backlog, extruders_df):
     #return unpack
     return out_due_date_backlog_copy
 
-
-
+def combine_to_date(starting_date, starting_hour, ending_date, ending_hour):
+    starting_datetime = pd.to_datetime(starting_date + ' ' + starting_hour, format = "%Y-%m-%d %H:%M:%S", errors = 'coerce')
+    ending_datetime = pd.to_datetime(ending_date + ' ' + ending_hour, format = "%Y-%m-%d %H:%M:%S", errors = 'coerce')
+    return starting_datetime, ending_datetime
+    
+def split_date(starting_datetime, ending_datetime):
+    if pd.isnull(starting_datetime):
+        return [(0,0)]
+    rv1 = [starting_datetime]
+    rv2 = []
+    date = starting_datetime.date()
+    while date + datetime.timedelta(1) <= ending_datetime.date():
+        rv2.append(datetime.datetime.combine(date, datetime.time(23, 59, 59)))
+        date = date + datetime.timedelta(1)
+        rv1.append(datetime.datetime.combine(date, datetime.time(0,0,0)))
+    rv2.append(datetime.datetime.combine(date, ending_datetime.time()))
+    return list(zip(rv1, rv2))
 
 #create unified table of packlines and extrusion that will be uploaded to Hana
 
@@ -267,12 +283,28 @@ def unified_sac(packlines_df, extruders_df, inventory_df, unpacked_df):
     
     #replace missing with 0
     unified_table = unified_table.replace('missing','0')
+    unified_sac = unified_table.copy()
+    unified_sac.name = 'UNIFIED_SAC'
     
+    #new table
+    unified_table['starting datetime'], unified_table['ending datetime'] = combine_to_date(unified_table['Starting Date'], unified_table['Starting Hour'], unified_table['Ending Date'],                                                                                        unified_table['Ending Hour'])
+    unified_table['to_explode'] = unified_table.apply(lambda row: split_date(row['starting datetime'], row['ending datetime']), axis = 1)
+    unified_table = unified_table.explode('to_explode', ignore_index = True)
+    unified_table['starting datetime'] = unified_table.apply(lambda row: row['to_explode'][0], axis = 1)
+    unified_table['ending datetime'] = unified_table.apply(lambda row: row['to_explode'][1], axis = 1)
+    unified_table['Starting Date'] = unified_table['starting datetime'].apply(lambda x: x.date() if x!=0 else 0)
+    unified_table['Starting Hour'] = unified_table['starting datetime'].apply(lambda x: x.time() if x!=0 else 0)
+    unified_table['Ending Date'] = unified_table['ending datetime'].apply(lambda x: x.date() if x!=0 else 0)
+    unified_table['Ending Hour'] = unified_table['ending datetime'].apply(lambda x: x.time() if x!=0 else 0)
+    unified_table['Hours'] = (unified_table['ending datetime']-unified_table['starting datetime'])
+    unified_table['Hours'] = unified_table['Hours'].apply(lambda x: round(x.seconds/3600,2) if x!=0 else 0)
+    unified_table.drop(['starting datetime', 'ending datetime', 'to_explode'], axis = 1, inplace = True)
+
     #name attribute
-    unified_table.name = 'UNIFIED_SAC'
+    unified_table.name = 'UNIFIED_SAC2'
 
     #return unified table
-    return unified_table
+    return unified_sac, unified_table
 
 
 
@@ -529,7 +561,7 @@ def upload_output_to_hana():
     unpacked_df = unpacked(out_due_date_backlog, extruders_df)
     inventory_df = inventory(bulk_inventory, extruders_df)
     wo_demand_df = wo_demand(itemmaster, workorders, extruders_df)
-    unified_sac_df = unified_sac(packlines_df, extruders_df, inventory_df, unpacked_df)
+    unified_sac_df, unified_sac2_df = unified_sac(packlines_df, extruders_df, inventory_df, unpacked_df)
 
     #variables for assigned wo
 
@@ -546,7 +578,7 @@ def upload_output_to_hana():
         group_extruders_df.to_excel('SAC_Output/group_extruders.xlsx', index = False)
         assigned_wo_df.to_excel('SAC_Output/assigned_wo.xlsx', index = False)
 
-    lista_tablas_para_SAC = [assigned_wo_df, unified_sac_df, wo_demand_df]
+    lista_tablas_para_SAC = [assigned_wo_df, unified_sac_df, wo_demand_df, unified_sac2_df]
     
     #itera sobre las tablas, pisa segun run y process date. Si no funciona, dale error
     for table in lista_tablas_para_SAC:

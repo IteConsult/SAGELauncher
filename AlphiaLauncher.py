@@ -18,6 +18,8 @@ from ManualInput import ManualInput
 import traceback
 from InputGeneration import * #TODO list functions
 import subprocess
+import queue
+import collections
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
@@ -25,7 +27,7 @@ sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHD
 def connectToHANA(app):
     if not app.connection_to_HANA:
         try:
-            app.connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:HANAtest2908@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
+            app.connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
             print('Connection to cloud database established.')
             return 'Connection succesful.'
         except Exception as e:
@@ -33,27 +35,24 @@ def connectToHANA(app):
             return 'Connection to cloud database failed! Retrying...'
 
 def add_manual_input(app):
-    lw = LoadingWindow(app)
-    manual_window = ManualInput(app)
-    load_tables_thread = threading.Thread(target = load_tables, args = (manual_window,), daemon = True)
+    app.lw = LoadingWindow(app)
+    app.manual_window = ManualInput(app)
+    load_tables_thread = threading.Thread(target = load_tables, args = (app,), daemon = True)
     load_tables_thread.start()
-    app.root.after(0, show_manual_window, app, manual_window, load_tables_thread, lw)    
-    # lw.check(load_tables_thread, final_command = lambda: manual_window.show())
+    app.root.after(0, app.lw.check, load_tables_thread, app.manual_window.show)
     
-def load_tables(manual_window):
-    manual_window.add_table('Extruders Schedule', 'extruders_schedule')
-    manual_window.add_table('Families', 'families')
-    manual_window.add_table('Product Priority', 'product_priority')
-    manual_window.add_table('Customer Priority', 'customer_priority')
-    
-def show_manual_window(app, manual_window, load_tables_thread, lw):
-    if load_tables_thread.is_alive():
-        print('not yet')
-        app.root.after(500, show_manual_window, app, manual_window, load_tables_thread, lw)
-    else:
-        print('now, show')
-        lw.destroy()
-        manual_window.show()
+def load_tables(app):
+    try:
+        app.q.append('Loading Extruders Schedule')
+        app.manual_window.add_table('Extruders Schedule', 'extruders_schedule')
+        app.q.append('Loading Families')
+        app.manual_window.add_table('Families', 'families')
+        app.q.append('Loading Product Priority')
+        app.manual_window.add_table('Product Priority', 'product_priority')
+        app.q.append('Loading Customer Priority')
+        app.manual_window.add_table('Customer Priority', 'customer_priority')
+    except Exception as e:
+        app.register_error('Couldn\'t load tables.', e)
 
 def startup():
     connected = False
@@ -101,7 +100,7 @@ def show_start_info():
 
 def wait_startup():
     if startup_thread.is_alive():
-        app.root.after(2000, wait_startup)
+        app.root.after(1000, wait_startup)
     else:
         threading.Thread(target = lambda: show_start_info(), daemon = True).start()
 
@@ -119,9 +118,15 @@ app.root.state('zoomed')
 app.root.minsize(1520, 700)
 
 #Debug variable
-app.to_excel = False
+app.to_excel = True
 #Connection
 app.connection_to_HANA = None
+#HANA dictionary
+##TODO
+#BigQuery dictionary
+##TODO
+
+#Input generator (es necesario?)
 input_generator = AlphiaInputGenerator(app)
 
 app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input(app))
@@ -131,16 +136,16 @@ app.manual_data_btn['state'] = 'disabled'
 app.add_model_lf()
 
 def run_simulation_cmd():
-    lw = LoadingWindow(app)
+    # lw = LoadingWindow(app)
     th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-simulation.bat',))
     th.start()
-    lw.check(th)
+    # lw.check(th)
     
 def run_optimization_cmd():
-    lw = LoadingWindow(app)
+    # lw = LoadingWindow(app)
     th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-optimization.bat',))
     th.start()
-    lw.check(th)
+    # lw.check(th)
 
 app.run_simulation_btn['command'] = lambda: run_simulation_cmd()
 app.run_optimization_btn['command'] = lambda: run_optimization_cmd()
@@ -148,7 +153,7 @@ app.run_optimization_btn['command'] = lambda: run_optimization_cmd()
 buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',
               'MASTER DATA ERRORS': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
               'RUN SUMMARY': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9',
-              'SCHEDULE REVIEW (!)': 'http://www.google.com/',
+              'SCHEDULE REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=C316E302FA989EB6B8DC0A7147C612B1',
               'REPORT CATALOG': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=home;tab=catalog',
               'SCHEDULE DETAIL': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9',
               }
@@ -184,19 +189,12 @@ ttk.Label(labels_right_frame, textvariable = app.total_demand_str).pack(anchor =
 app.grafic_lf = ttk.LabelFrame(display_info_frm, text = '   DEMAND PER WEEK')
 app.grafic_lf.pack(anchor = 'n', padx = 20, pady = 20, fill = tk.X, expand = True)
 
-# app.display_info_widget = tk.Text(display_info_frm, wrap = 'word', state = 'disabled', relief = tk.FLAT, bg = 'white smoke')
-# app.display_info_widget.pack(fill = tk.BOTH, expand = True, side = tk.LEFT, padx = (20, 0), pady = 20)
-# display_info_ys = ttk.Scrollbar(display_info_frm, orient = 'vertical', command = app.display_info_widget.yview)
-# display_info_ys.pack(side = tk.LEFT, fill = tk.Y)
-# app.display_info_widget['yscrollcommand'] = display_info_ys.set
-
 app.error_demand_frm = ttk.Frame(right_notebook)
 right_notebook.add(app.error_demand_frm, text = '  Error Demand   ', padding = 15)
 right_notebook.tab(1, state = 'disabled')
 
 sns.set_style('whitegrid', {'figure.facecolor': 'whitesmoke'})
 
-#print(sns.axes_style())
 app.fig = Figure(figsize = (10,4), tight_layout = True)
 app.ax = app.fig.add_subplot(111)
 app.canvas = FigureCanvasTkAgg(app.fig, master = app.grafic_lf)
