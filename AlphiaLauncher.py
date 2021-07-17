@@ -29,13 +29,19 @@ from InputGeneration import * #TODO list functions
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
-def connectToHANA(app):
-    engine = None
+app = Launcher('DETAILED SCHEDULING OPTIMIZATION')
+app.root.state('zoomed')
+app.root.minsize(1520, 700)
+
+def connectToHANA():
+    connection = None
     try:
-        engine = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false')
+        connection = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
     except Exception as e:
-        print('Could not create engine. ' + str(e))
-    return engine
+        print('Could not establish connection. ' + str(e))
+    return connection
+
+app.connectToHANA = connectToHANA
 
 def add_manual_input(app):
     app.lw = LoadingWindow(app)
@@ -57,22 +63,40 @@ def load_tables(app):
     except Exception as e:
         app.register_error('Couldn\'t load tables.', e)
 
-def show_start_info():
-    if app.connection_to_HANA:
+def show_demand_info_command(comboboxSelectedEvent):
+    show_demand_info_thread = threading.Thread(target = show_demand_info, daemon = True)
+    show_demand_info_thread.start()
+    # app.after(0, check_show_demand_info, show_demand_info_thread)
+    
+def check_show_demand_info(show_demand_info_thread):
+    if show_demand_info_thread.is_alive():
+        app.after(100, check_show_demand_info, show_demand_info_thread)
+
+def show_demand_info():
+    app.read_data_btn['state'] = 'normal'
+    try:    
+        app.last_update_str.set('Retrieving data...')
+        app.total_demand_str.set('Retrieving data...')
         app.statusbar.config(text = 'Retrieving last demand info...')
-        with app.connection_to_HANA.connect() as connection:
-            #Bring time of last update
-            try:
+        if app.connection_mode.get() == 'SAP HANA Cloud':
+            with app.connectToHANA() as connection:
+                #Bring time of last update
                 last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
-                app.last_update_str.set(last_time.strftime("%d/%m/%y %H:%M"))
+                app.last_update_str.set(last_time.strftime("%m/%d/%y %H:%M"))
                 app.total_demand_str.set(f'{round(total_demand, 2):,}')
-            except:
-                app.last_update_str.set('Couldn\'t retrieve information.')
-                app.total_demand_str.set('Couldn\'t retrieve information.')
+                #Reading Error Demand table
+                ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
+                #Displaying demand graphic
+                df = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
+        elif app.connection_mode.get() == 'Excel':
+            with open('Model/Database Input/ld.log', 'r') as last_demand_info_log:
+                last_time, total_demand = last_demand_info_log.readlines()
+                app.last_update_str.set(last_time.strip())
+                app.total_demand_str.set(total_demand.strip())
             #Reading Error Demand table
-            ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
+            ERROR_DEMAND = pd.read_excel('Model/Database Input/Error_Demand.xlsx').astype(str)
             #Displaying demand graphic
-            df = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
+            df = pd.read_excel('Model/Demand.xlsx', sheet_name = 'Demand').astype({'Demand quantity (pounds)': float})
         #Display info
         df['Due date'] = pd.to_datetime(df['Due date'])
         df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
@@ -90,10 +114,11 @@ def show_start_info():
         error_demand_pt.show()
         right_notebook.tab(1, state = 'normal')
         app.statusbar.config(text = '')
-
-def wait_startup():
-    if startup_thread.is_alive():
-        app.root.after(1000, wait_startup)
+    except Exception as e:
+        print('Could not connect to cloud database: ' + traceback.format_exc())
+        app.statusbar.config(text = 'Could not connect to cloud database.')
+        app.last_update_str.set('Couldn\'t retrieve information.')
+        app.total_demand_str.set('Couldn\'t retrieve information.')
 
 def update_db_from_SAGE_command():
     lw = LoadingWindow(app)
@@ -104,22 +129,11 @@ def update_db_from_SAGE_command():
 def generate_model_files_from_backup_command():
     loading_window_backup = LoadingWindow(app.root, input_generator.generate_model_files_from_backup)
 
-app = Launcher('DETAILED SCHEDULING OPTIMIZATION')
-app.root.state('zoomed')
-app.root.minsize(1520, 700)
-
-# #Debug variable
-# app.to_excel = False
-#Connection
-app.connection_to_HANA = connectToHANA(app)
-#BigQuery dictionary
-##TODO
-
 #Input generator (es necesario?)
 input_generator = AlphiaInputGenerator(app)
 
 app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input(app))
-# app.read_data_btn['state'] = 'disabled'
+app.read_data_btn['state'] = 'disabled'
 # app.manual_data_btn['state'] = 'disabled'
 
 app.add_model_lf()
@@ -137,7 +151,9 @@ def run_optimization_cmd():
     # lw.check(th)
 
 app.run_simulation_btn['command'] = lambda: run_simulation_cmd()
+app.run_simulation_btn['state'] = 'disabled'
 app.run_optimization_btn['command'] = lambda: run_optimization_cmd()
+app.run_optimization_btn['state'] = 'disabled'
 
 buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',
               'MASTER DATA ERRORS': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
@@ -166,31 +182,33 @@ main_upper_frm.columnconfigure(1, weight = 1, uniform = 'main_upper')
 import_settings_lf = ttk.LabelFrame(main_upper_frm, text = '    IMPORT/EXPORT SETTINGS')
 import_settings_lf.grid(row = 0, column = 0, sticky = 'nwes', padx = 20, pady = 20)
 
-# app.connection_mode = tk.StringVar()
-# connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud'], textvariable = app.connection_mode, state = 'readonly')
-# connection_combobox.current(0)
-# connection_combobox.pack(padx = 40, pady = 10, anchor = 'w')
+app.connection_mode = tk.StringVar()
+connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud', 'Excel'], textvariable = app.connection_mode, state = 'readonly')
+connection_combobox.grid(column = 1, row = 0, padx = 40, pady = 10, sticky = 'w')
+
+#Bind event 'connection_combobox selected' to show_demand_info_command function
+connection_combobox.bind('<<ComboboxSelected>>', show_demand_info_command)
 
 app.to_excel = tk.IntVar()
-to_excel_cb = ttk.Checkbutton(import_settings_lf, variable = app.to_excel, text = 'Save tables as Excel Files')
-to_excel_cb.pack(padx = 40, pady = (0,10), anchor = 'w')
+to_excel_cb = ttk.Checkbutton(import_settings_lf, variable = app.to_excel, text = 'Save REST tables as Excel Files')
+to_excel_cb.grid(column = 1, row = 1, padx = 40, pady = (0,10), sticky = 'w')
 
-last_demand_lf = ttk.LabelFrame(main_upper_frm, text = '    LAST DEMAND INFO')
+last_demand_lf = ttk.LabelFrame(main_upper_frm, text = '    LAST DEMAND STORED')
 last_demand_lf.grid(row = 0, column = 1, sticky = 'nwes', padx = 20, pady = 20)
 
 labels_left_frame = ttk.Frame(last_demand_lf)
 labels_left_frame.pack(side = tk.LEFT, padx = (40,30))
 
-ttk.Label(labels_left_frame, text = 'Last update: ').pack(anchor = 'w', pady = 10)
-ttk.Label(labels_left_frame, text = 'Total demand: ').pack(anchor = 'w', pady = (0,10))
+ttk.Label(labels_left_frame, text = 'Data generation date and time: ').pack(anchor = 'w', pady = 10)
+ttk.Label(labels_left_frame, text = 'Total demand (in pounds): ').pack(anchor = 'w', pady = (0,10))
 
 labels_right_frame = ttk.Frame(last_demand_lf)
 labels_right_frame.pack(side = tk.LEFT)
 
-app.last_update_str = tk.StringVar(value = 'Retrieving...')
+app.last_update_str = tk.StringVar(value = 'Select connection.')
 ttk.Label(labels_right_frame, textvariable = app.last_update_str).pack(anchor = 'w', pady = 10)
 
-app.total_demand_str = tk.StringVar(value = 'Retrieving...')
+app.total_demand_str = tk.StringVar(value = 'Select connection.')
 ttk.Label(labels_right_frame, textvariable = app.total_demand_str).pack(anchor = 'w', pady = (0,10))
 
 app.grafic_lf = ttk.LabelFrame(display_info_frm, text = '   DEMAND PER WEEK')
@@ -208,10 +226,5 @@ app.canvas = FigureCanvasTkAgg(app.fig, master = app.grafic_lf)
 app.canvas.draw()
 
 app.add_logo()
-
-startup_thread = threading.Thread(target = show_start_info, daemon = True)
-startup_thread.start()
-
-app.root.after(1000, wait_startup)
 
 app.root.mainloop()

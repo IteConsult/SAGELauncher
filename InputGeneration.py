@@ -34,29 +34,40 @@ class AlphiaInputGenerator():
                 except Exception as e:
                     print(f'Couldn\'t load table {table}: ' + traceback.format_exc())
                     self.app.register_error(f'Couldn\'t load table {table}: ', e)
-                    #loading_window.destroy()
                     return 1
                     #try to read backup from HANA?
 
             #Upload raw SAGE tables into HANA
             if self.app.connection_mode.get() == 'SAP HANA Cloud':
+                with self.app.connectToHANA() as connection:
+                    for table in table_urls:
+                        self.app.q.append(f'Updating {table} in cloud database')
+                        try:
+                            connection.execute(f'DELETE FROM "SAGE".{table}')
+                            getattr(self, table).to_sql(table.lower(), con = connection, if_exists = 'append', index = False, schema = 'sage')
+                            print(f'Table {table} was uploaded to HANA succesfully.')
+                        except Exception as e:
+                            print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
+                            self.app.register_error(f'Couldn\'t save {table} table into HANA. ', e)
+                            return 1
+            
+            if self.app.to_excel.get():
                 for table in table_urls:
-                    self.app.q.append(f'Updating {table} in cloud database')
+                    self.app.q.append(f'Saving {table} as Excel spreadsheet')                    
                     try:
-                        self.app.connection.execute(f'DELETE FROM "SAGE".{table}')
-                        getattr(self, table).to_sql(table.lower(), con = self.app.connection, if_exists = 'append', index = False, schema = 'sage')
+                        getattr(self, table).to_excel(f'Raw tables/{table.lower()}.xlsx', index = False)
                         print(f'Table {table} was uploaded to HANA succesfully.')
                     except Exception as e:
                         print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
-                        self.app.register_error(f'Couldn\'t save {table} table into HANA. ', e)
-                        #loading_window.destroy()
+                        self.app.register_error(f'Couldn\'t save {table} as Excel spreadsheet. ', e)
                         return 1
 
             #Read manual files from HANA
-            manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families']
+            #TODO pasar a diccionario con valores la lista de columnas
+            manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families', 'Extruders_Schedule']
             
             if self.app.connection_mode.get() == 'SAP HANA Cloud':
-                with self.app.connection.connect() as connection:
+                with self.app.connectToHANA() as connection:
                     for table in manual_files:
                         self.app.q.append(f'Loading {table}')
                         try:
@@ -66,14 +77,22 @@ class AlphiaInputGenerator():
                         except Exception as e:
                             print('Couldn\'t read table {table} from HANA. ' + traceback.format_exc())
                             self.app.register_error('Couldn\'t read table {table} from HANA. ', e)
-                            #loading_window.destroy()
                             return 1
+            #Read manual files from Excel files
+            elif self.app.connection_mode.get() == 'Excel':
+                for table in manual_files:
+                    self.app.q.append(f'Loading {table}')
+                    try:
+                        df = pd.read_excel(f'Model/Manual Files/{table}.xlsx').astype(str)
+                        setattr(self, table, df)
+                        print(f'Table {table} succesfully read from Excel file.')
+                    except Exception as e:
+                        print('Couldn\'t read table {table} from Excel file. ' + traceback.format_exc())
+                        self.app.register_error('Couldn\'t read table {table} from Excel file. ', e)
+                        return 1
 
             s_code = self.generate_and_upload_model_files()
-
-            # print(f'generate_model_files_from_backup function finished with code {s_code}.')
-
-            #loading_window.destroy()
+            
             return s_code
         except Exception as e:
             self.app.register_error('', e)
@@ -89,6 +108,7 @@ class AlphiaInputGenerator():
             print('Breakout table succesfully generated.')
         except Exception as e:
             print('Failed to generate Breakout table: ' + traceback.format_exc())
+            self.app.register_error('Failed to generate Breakout table: ' , e)
             return 1
             
         #2) Packlines and extruders
@@ -98,6 +118,7 @@ class AlphiaInputGenerator():
             print('Packlines and Extruders tables succesfully generated.')
         except Exception as e:
             print('Failed to generate Packlines and Extruders tables: ' + traceback.format_exc())
+            self.app.register_error('Failed to generate Packlines and Extruders tables: ' , e)
             return 1
             
         #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
@@ -106,6 +127,7 @@ class AlphiaInputGenerator():
             self.DEMAND, self.ERROR_DEMAND = self.generate_demand()
             print('Demand table succesfully generated.')
         except Exception as e:
+            print('Failed to generate Demand table: ' + traceback.format_exc())
             self.app.register_error('Failed to generate Demand table: ' , e)
             return 1
 
@@ -131,117 +153,117 @@ class AlphiaInputGenerator():
 
         ### Uploading tables
         if self.app.connection_mode.get() == 'SAP HANA Cloud':
-            #1) Breakout
-            try:
-                self.app.q.append('Uploading Breakout table')
-                self.app.connection.execute('DELETE FROM "ANYLOGIC"."BREAKOUT_FILE"')
-                #BREAKOUT.to_excel('Breakout_file.xlsx', index = False)
-                self.BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = self.app.connection, if_exists = 'append', index = False)
-                print('Breakout table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Breakout table to HANA: ' + traceback.format_exc())
-                return 1
+            with self.app.connectToHANA() as connection:
+                #1) Breakout
+                try:
+                    self.app.q.append('Uploading Breakout table')
+                    connection.execute('DELETE FROM "ANYLOGIC"."BREAKOUT_FILE"')
+                    self.BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    print('Breakout table succesfully uploaded to HANA.')
+                except Exception as e:
+                    print('Failed to upload Breakout table to HANA: ', e)
+                    return 1
 
-            #2) Packlines and extruders
-            try:
-                self.app.q.append('Uploading Packlines table')
-                self.app.connection.execute('DELETE FROM "ANYLOGIC"."PACKLINES"')
-                #PACKLINES.to_excel('Packlines.xlsx', index = False)
-                self.PACKLINES.to_sql('packlines', schema = 'anylogic', con = self.app.connection, if_exists = 'append', index = False)
-                print('Packlines table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
-                self.app.register_error('Failed to upload Packlines table to HANA: ', e)
-                return 1
-            try:
-                self.app.q.append('Uploading Extruders table')
-                self.app.connection.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
-                #EXTRUDERS.to_excel('Extruders.xlsx', index = False)
-                self.EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = self.app.connection, if_exists ='append', index = False)
-                print('Extruders table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Extruders table to HANA: ' + traceback.format_exc())
-                self.app.register_error('Failed to upload Extruders table to HANA: ', e)
-                return 1
+                #2) Packlines and extruders
+                try:
+                    self.app.q.append('Uploading Packlines table')
+                    connection.execute('DELETE FROM "ANYLOGIC"."PACKLINES"')
+                    self.PACKLINES.to_sql('packlines', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    print('Packlines table succesfully uploaded to HANA.')
+                except Exception as e:
+                    print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Packlines table to HANA: ', e)
+                    return 1
+                try:
+                    self.app.q.append('Uploading Extruders table')
+                    connection.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
+                    self.EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = connection, if_exists ='append', index = False)
+                    print('Extruders table succesfully uploaded to HANA.')
+                except Exception as e:
+                    print('Failed to upload Extruders table to HANA: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Extruders table to HANA: ', e)
+                    return 1
 
-            #3) Demand and Error Demand (must be created after Breakout, Packlines and Extruders in order to be able to validate)
-            try:
-                self.app.connection.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
-                self.DEMAND.to_sql('demand', schema = 'anylogic', con = self.app.connection, if_exists = 'append', index = False)
-                print('Demand table succesfully uploaded to HANA.')
-                # DEMAND.to_excel('Demand.xlsx', index = False)
-            except Exception as e:
-                print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
-                self.app.register_error('Failed to upload Demand table to HANA: ' + traceback.format_exc())
-                return 1
-            try:
-                self.app.q.append('Uploading Error demand table')
-                self.app.connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
-                self.ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = self.app.connection, if_exists = 'append', index = False)
-                print('Error demand table succesfully uploaded to HANA.')
-                #ERROR_DEMAND.to_excel('ERROR_DEMAND.xlsx', index = False)
-            except Exception as e:
-                print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
-                self.app.register_error('Failed to upload Error demand table to HANA: ', q)
-                return 1
+                #3) Demand and Error Demand (must be created after Breakout, Packlines and Extruders in order to be able to validate)
+                try:
+                    connection.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
+                    self.DEMAND.to_sql('demand', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    print('Demand table succesfully uploaded to HANA.')
+                except Exception as e:
+                    print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Demand table to HANA: ', e)
+                    return 1
+                try:
+                    self.app.q.append('Uploading Error demand table')
+                    connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
+                    self.ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                    print('Error demand table succesfully uploaded to HANA.')
+                except Exception as e:
+                    print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Error demand table to HANA: ', e)
+                    return 1
 
-            #4) Inventory bulk (must be created after Demand in order to validate)
-            try:
-                self.app.q.append('Uploading Bulk inventory table')
-                self.app.connection.execute('DELETE FROM "ANYLOGIC"."BULK_INVENTORY"')
-                #INVENTORY_BULK.to_excel('Inventory_bulk.xlsx', index = False)
-                self.INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = self.app.connection, if_exists = 'append', index = False)
-                print('Bulk inventory table succesfully uploaded to HANA.')
-            except Exception as e:
-                print('Failed to upload Bulk inventory table to HANA: ' + traceback.format_exc())
-                self.app.register_error('Failed to upload Bulk inventory table to HANA: ', e)
-                return 1
-            
-            #5) WO Demand for SAC
-            try:
-                self.app.q.append('Uploading WO Demand table')
-                self.app.connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
-                self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = self.app.connection, if_exists = 'append', index = False)
-            except Exception as e:
-                print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
-                self.app.register_error('Failed to upload WO Demand table to HANA: ', e)
-                return 1
+                #4) Inventory bulk (must be created after Demand in order to validate)
+                try:
+                    self.app.q.append('Uploading Bulk inventory table')
+                    connection.execute('DELETE FROM "ANYLOGIC"."BULK_INVENTORY"')
+                    self.INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    print('Bulk inventory table succesfully uploaded to HANA.')
+                except Exception as e:
+                    print('Failed to upload Bulk inventory table to HANA: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Bulk inventory table to HANA: ', e)
+                    return 1
                 
-            #6) Save upload time info
-            try:
-                self.app.connection.execute('DELETE FROM "SAGE"."LOG"')
-                last_time = pd.to_datetime(datetime.datetime.now())
-                total_demand = round(self.DEMAND['Demand quantity (pounds)'].sum(),2)
-                pd.DataFrame({'TIME': [last_time], 'TOTAL_DEMAND': [total_demand]}).to_sql('log', schema = 'sage', con = self.app.connection, if_exists = 'append', index = False)
-                print('Updated backup time successfully.')
-                self.app.total_demand_str.set(str(total_demand))
-                self.app.last_update_str.set(last_time.strftime("%d/%m/%y %H:%M"))
-            except Exception as e:
-                print('Failed to update backup time: ' + traceback.format_exc())
-                self.app.register_error('Failed to update backup time: ', e)
-
-        if self.app.to_excel:
+                #5) WO Demand for SAC
+                try:
+                    self.app.q.append('Uploading WO Demand table')
+                    connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
+                    self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                except Exception as e:
+                    print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload WO Demand table to HANA: ', e)
+                    return 1
+                    
+                #6) Save upload time info
+                try:
+                    connection.execute('DELETE FROM "SAGE"."LOG"')
+                    current_time = pd.to_datetime(datetime.datetime.now())
+                    total_demand = self.DEMAND['Demand quantity (pounds)'].sum()
+                    pd.DataFrame({'TIME': [current_time], 'TOTAL_DEMAND': [round(total_demand,2)]}).to_sql('log', schema = 'sage', con = connection, if_exists = 'append', index = False)
+                    print('Updated backup time successfully.')
+                    self.app.total_demand_str.set(f"{total_demand:,.2f}")
+                    self.app.last_update_str.set(current_time.strftime("%d/%m/%y %H:%M"))
+                except Exception as e:
+                    print('Failed to update backup time: ' + traceback.format_exc())
+                    self.app.register_error('Failed to update backup time: ', e)
+        elif self.app.connection_mode.get() == 'Excel':
             self.app.q.append('Saving tables as Excel files')
             print('Saving tables as Excel files')
             dic = {'BREAKOUT': ('Model/Database Input/Breakout_file.xlsx', 'Breakout'),
-                'PACKLINES': ('Model /Database Input/Packlines.xlsx', 'Packlines'),
-                'EXTRUDERS': ('Model/Database Input/Extruders.xlsx', 'Extruders')}
+                'PACKLINES': ('Model/Database Input/Packlines.xlsx', 'Packlines'),
+                'EXTRUDERS': ('Model/Database Input/Extruders.xlsx', 'Extruders'),
+                'ERROR_DEMAND': ('Model/Database Input/Error_Demand.xlsx', 'Error Demand'),}
             for table in dic:
                 try:
                     getattr(self, table).to_excel(dic[table][0], sheet_name = dic[table][1], index = False)
                     print(f'{table} saved to Excel.')
-                except:
-                    print('Couldn\'t save table.')
-            EXTRUDERS_SCHEDULE = pd.read_sql_table('extruders_schedule', schema = 'manual_files', con = self.app.connection)
+                except Exception as e:
+                    print(f'Couldn\'t save {table} table.' + traceback.format_exc())
             try:
                 with pd.ExcelWriter('Model/Demand.xlsx') as writer:
                     self.DEMAND.to_excel(writer, sheet_name = 'Demand', index = False)
                     self.INVENTORY_BULK.to_excel(writer, sheet_name = 'Bulk Inventory', index = False)
-                    self.EXTRUDERS_SCHEDULE.to_excel(writer, sheet_name = 'Extruders Schedule', index = False)
+                    self.Extruders_Schedule.to_excel(writer, sheet_name = 'Extruders Schedule', index = False)
                 print('Demand saved to Excel.')
             except Exception as e:
                 print('Couldn\'t save to Excel: ' + traceback.format_exc())
                 self.app.register_error('Couldn\'t save to Excel.', e)
+            with open('Model/Database Input/ld.log', 'w+') as last_demand_stored_log:
+                current_time = pd.to_datetime(datetime.datetime.now()).strftime("%d/%m/%y %H:%M")
+                total_demand = f"{self.DEMAND['Demand quantity (pounds)'].sum():,.2f}"
+                last_demand_stored_log.write(f"{current_time}\n{total_demand}")
+            self.app.total_demand_str.set(total_demand)
+            self.app.last_update_str.set(current_time)
 
         self.display_info()
 
