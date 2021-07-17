@@ -1,38 +1,41 @@
+#Standard libraries imports
 import tkinter as tk
 from tkinter import ttk
-import sqlalchemy
-from sqlalchemy_hana import dialect
 import time as time_module
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
-import pandas as pd
 import datetime
-import seaborn as sns
 import sys
 import os
-sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 import threading
-from Launcher import Launcher, LoadingWindow
-from CustomTable import CustomTable
-from ManualInput import ManualInput
 import traceback
-from InputGeneration import * #TODO list functions
 import subprocess
 import queue
 import collections
+
+#Third party libraries
+import sqlalchemy
+from sqlalchemy_hana import dialect
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+import pandas as pd
+import seaborn as sns
+
+#Local imports
+sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
+from Launcher import Launcher, LoadingWindow
+from CustomTable import CustomTable
+from ManualInput import ManualInput
+from InputGeneration import * #TODO list functions
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
 def connectToHANA(app):
-    if not app.connection_to_HANA:
-        try:
-            app.connection_to_HANA = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
-            print('Connection to cloud database established.')
-            return 'Connection succesful.'
-        except Exception as e:
-            print('Connection failed!\n' + str(e))
-            return 'Connection to cloud database failed! Retrying...'
+    engine = None
+    try:
+        engine = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false')
+    except Exception as e:
+        print('Could not create engine. ' + str(e))
+    return engine
 
 def add_manual_input(app):
     app.lw = LoadingWindow(app)
@@ -54,55 +57,43 @@ def load_tables(app):
     except Exception as e:
         app.register_error('Couldn\'t load tables.', e)
 
-def startup():
-    connected = False
-    while not connected:
-        out_string = connectToHANA(app)
-        app.statusbar.config(text = out_string)
-        if app.connection_to_HANA:
-            connected = True
-        else:
-            time_module.sleep(5)
-
 def show_start_info():
-    app.statusbar.config(text = 'Connection established. Retrieving last demand info...')
-    #Bring time of last update
-    try:
-        last_time, total_demand = app.connection_to_HANA.execute('SELECT * FROM "SAGE"."LOG"').first()
-        app.last_update_str.set(last_time.strftime("%d/%m/%y %H:%M"))
-        app.total_demand_str.set(str(round(total_demand, 2)))
-    except:
-        app.last_update_str.set('Couldn\'t retrieve information.')
-        app.total_demand_str.set('Couldn\'t retrieve information.')
-    #Displaying demand graphic
-    df = pd.read_sql_table('demand', schema = 'anylogic', con = app.connection_to_HANA).astype({'Demand quantity (pounds)': float})
-    df['Due date'] = pd.to_datetime(df['Due date'])
-    df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
-    df = df[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
-    plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
-                  estimator = sum, ci = None, ax = app.ax)
-    app.ax.xaxis_date()
-    x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
-    app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
-    app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
-    app.fig.canvas.draw_idle()
-    #Bring last error demand
-    ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = app.connection_to_HANA)
-    error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
-    error_demand_pt.adjustColumnWidths()
-    error_demand_pt.show()
-    right_notebook.tab(1, state = 'normal')
-    app.statusbar.config(text = 'Connection established.')
-    #Activate buttons
-    app.read_data_btn['state'] = 'normal'
-    # generate_model_files_from_backup_btn['state'] = 'normal'
-    app.manual_data_btn['state'] = 'normal'
+    if app.connection_to_HANA:
+        app.statusbar.config(text = 'Retrieving last demand info...')
+        with app.connection_to_HANA.connect() as connection:
+            #Bring time of last update
+            try:
+                last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
+                app.last_update_str.set(last_time.strftime("%d/%m/%y %H:%M"))
+                app.total_demand_str.set(f'{round(total_demand, 2):,}')
+            except:
+                app.last_update_str.set('Couldn\'t retrieve information.')
+                app.total_demand_str.set('Couldn\'t retrieve information.')
+            #Reading Error Demand table
+            ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
+            #Displaying demand graphic
+            df = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
+        #Display info
+        df['Due date'] = pd.to_datetime(df['Due date'])
+        df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
+        df = df[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
+        plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
+                      estimator = sum, ci = None, ax = app.ax)
+        app.ax.xaxis_date()
+        x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
+        app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
+        app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
+        app.fig.canvas.draw_idle()
+        #Bring last error demand
+        error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
+        error_demand_pt.adjustColumnWidths()
+        error_demand_pt.show()
+        right_notebook.tab(1, state = 'normal')
+        app.statusbar.config(text = '')
 
 def wait_startup():
     if startup_thread.is_alive():
         app.root.after(1000, wait_startup)
-    else:
-        threading.Thread(target = lambda: show_start_info(), daemon = True).start()
 
 def update_db_from_SAGE_command():
     lw = LoadingWindow(app)
@@ -117,12 +108,10 @@ app = Launcher('DETAILED SCHEDULING OPTIMIZATION')
 app.root.state('zoomed')
 app.root.minsize(1520, 700)
 
-#Debug variable
-app.to_excel = True
+# #Debug variable
+# app.to_excel = False
 #Connection
-app.connection_to_HANA = None
-#HANA dictionary
-##TODO
+app.connection_to_HANA = connectToHANA(app)
 #BigQuery dictionary
 ##TODO
 
@@ -130,8 +119,8 @@ app.connection_to_HANA = None
 input_generator = AlphiaInputGenerator(app)
 
 app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input(app))
-app.read_data_btn['state'] = 'disabled'
-app.manual_data_btn['state'] = 'disabled'
+# app.read_data_btn['state'] = 'disabled'
+# app.manual_data_btn['state'] = 'disabled'
 
 app.add_model_lf()
 
@@ -166,10 +155,28 @@ right_notebook = ttk.Notebook(right_frame)
 right_notebook.pack(expand = True, fill = tk.BOTH)
 
 display_info_frm = ttk.Frame(right_notebook)
-right_notebook.add(display_info_frm, text = '  Demand Info   ')
+right_notebook.add(display_info_frm, text = '  Main Tab   ')
 
-last_demand_lf = ttk.LabelFrame(display_info_frm, text = '    LAST DEMAND INFO')
-last_demand_lf.pack(padx = 20, pady = 20, fill = tk.X)
+main_upper_frm = ttk.Frame(display_info_frm)
+main_upper_frm.pack(fill = tk.X)
+
+main_upper_frm.columnconfigure(0, weight = 1, uniform = 'main_upper')
+main_upper_frm.columnconfigure(1, weight = 1, uniform = 'main_upper')
+
+import_settings_lf = ttk.LabelFrame(main_upper_frm, text = '    IMPORT/EXPORT SETTINGS')
+import_settings_lf.grid(row = 0, column = 0, sticky = 'nwes', padx = 20, pady = 20)
+
+# app.connection_mode = tk.StringVar()
+# connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud'], textvariable = app.connection_mode, state = 'readonly')
+# connection_combobox.current(0)
+# connection_combobox.pack(padx = 40, pady = 10, anchor = 'w')
+
+app.to_excel = tk.IntVar()
+to_excel_cb = ttk.Checkbutton(import_settings_lf, variable = app.to_excel, text = 'Save tables as Excel Files')
+to_excel_cb.pack(padx = 40, pady = (0,10), anchor = 'w')
+
+last_demand_lf = ttk.LabelFrame(main_upper_frm, text = '    LAST DEMAND INFO')
+last_demand_lf.grid(row = 0, column = 1, sticky = 'nwes', padx = 20, pady = 20)
 
 labels_left_frame = ttk.Frame(last_demand_lf)
 labels_left_frame.pack(side = tk.LEFT, padx = (40,30))
@@ -200,16 +207,11 @@ app.ax = app.fig.add_subplot(111)
 app.canvas = FigureCanvasTkAgg(app.fig, master = app.grafic_lf)
 app.canvas.draw()
 
-app.statusbar['text'] = 'Establishing connection to cloud database...'
-
 app.add_logo()
 
-startup_thread = threading.Thread(target = startup, daemon = True)
+startup_thread = threading.Thread(target = show_start_info, daemon = True)
 startup_thread.start()
 
 app.root.after(1000, wait_startup)
 
 app.root.mainloop()
-
-if app.connection_to_HANA:
-    app.connection_to_HANA.close()
