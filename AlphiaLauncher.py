@@ -52,14 +52,15 @@ def add_manual_input(app):
     
 def load_tables(app):
     try:
-        app.q.append('Loading Extruders Schedule')
-        app.manual_window.add_table('Extruders Schedule', 'extruders_schedule')
-        app.q.append('Loading Families')
-        app.manual_window.add_table('Families', 'families')
-        app.q.append('Loading Product Priority')
-        app.manual_window.add_table('Product Priority', 'product_priority')
-        app.q.append('Loading Customer Priority')
-        app.manual_window.add_table('Customer Priority', 'customer_priority')
+        with app.connectToHANA() as connection:
+            app.q.append('Loading Extruders Schedule')
+            app.manual_window.add_table('Extruders Schedule', 'extruders_schedule', connection)
+            app.q.append('Loading Families')
+            app.manual_window.add_table('Families', 'families', connection)
+            app.q.append('Loading Product Priority')
+            app.manual_window.add_table('Product Priority', 'product_priority', connection)
+            app.q.append('Loading Customer Priority')
+            app.manual_window.add_table('Customer Priority', 'customer_priority', connection)
     except Exception as e:
         app.register_error('Couldn\'t load tables.', e)
 
@@ -74,11 +75,13 @@ def check_show_demand_info(show_demand_info_thread):
 
 def show_demand_info():
     app.read_data_btn['state'] = 'normal'
-    try:    
-        app.last_update_str.set('Retrieving data...')
-        app.total_demand_str.set('Retrieving data...')
-        app.statusbar.config(text = 'Retrieving last demand info...')
-        if app.connection_mode.get() == 'SAP HANA Cloud':
+    app.run_simulation_btn['state'] = 'normal'
+    app.run_optimization_btn['state'] = 'normal'
+    app.statusbar.config(text = 'Retrieving last demand info...')
+    if app.connection_mode.get() == 'SAP HANA Cloud':
+        try:
+            app.last_update_str.set('Retrieving data...')
+            app.total_demand_str.set('Retrieving data...')
             with app.connectToHANA() as connection:
                 #Bring time of last update
                 last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
@@ -88,37 +91,51 @@ def show_demand_info():
                 ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
                 #Displaying demand graphic
                 df = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
-        elif app.connection_mode.get() == 'Excel':
+            app.manual_data_btn['state'] = 'normal'
+        except Exception as e:
+            print('Could not connect to cloud database: ' + traceback.format_exc())
+            # app.statusbar.config(text = 'Could not connect to cloud database.')
+            app.last_update_str.set('Could not retrieve information.')
+            app.total_demand_str.set('Could not retrieve information.')        
+    elif app.connection_mode.get() == 'Excel':
+        try:
             with open('Model/Database Input/ld.log', 'r') as last_demand_info_log:
                 last_time, total_demand = last_demand_info_log.readlines()
                 app.last_update_str.set(last_time.strip())
                 app.total_demand_str.set(total_demand.strip())
+        except Exception as e:
+            print('Could not retrieve Demand data: ' + traceback.format_exc())
+            # app.statusbar.config(text = 'Could not connect to cloud database.')
+            app.last_update_str.set('Couldn\'t retrieve information.')
+            app.total_demand_str.set('Couldn\'t retrieve information.')  
+        try:
             #Reading Error Demand table
             ERROR_DEMAND = pd.read_excel('Model/Database Input/Error_Demand.xlsx').astype(str)
+        except:
+            print('Could not read Error demand. ' + traceback.format_exc())
+        try:
             #Displaying demand graphic
             df = pd.read_excel('Model/Demand.xlsx', sheet_name = 'Demand').astype({'Demand quantity (pounds)': float})
-        #Display info
-        df['Due date'] = pd.to_datetime(df['Due date'])
-        df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
-        df = df[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
-        plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
-                      estimator = sum, ci = None, ax = app.ax)
-        app.ax.xaxis_date()
-        x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
-        app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
-        app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
-        app.fig.canvas.draw_idle()
-        #Bring last error demand
-        error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
-        error_demand_pt.adjustColumnWidths()
-        error_demand_pt.show()
-        right_notebook.tab(1, state = 'normal')
-        app.statusbar.config(text = '')
-    except Exception as e:
-        print('Could not connect to cloud database: ' + traceback.format_exc())
-        app.statusbar.config(text = 'Could not connect to cloud database.')
-        app.last_update_str.set('Couldn\'t retrieve information.')
-        app.total_demand_str.set('Couldn\'t retrieve information.')
+        except:
+            print('Could not read Demand. ' + traceback.format_exc())
+
+    #Display info
+    df['Due date'] = pd.to_datetime(df['Due date'])
+    df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
+    df = df[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
+    plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
+                  estimator = sum, ci = None, ax = app.ax)
+    app.ax.xaxis_date()
+    x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
+    app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
+    app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
+    app.fig.canvas.draw_idle()
+    #Bring last error demand
+    error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
+    error_demand_pt.adjustColumnWidths()
+    error_demand_pt.show()
+    right_notebook.tab(1, state = 'normal')
+    app.statusbar.config(text = '')
 
 def update_db_from_SAGE_command():
     lw = LoadingWindow(app)
@@ -134,25 +151,23 @@ input_generator = AlphiaInputGenerator(app)
 
 app.add_data_lf(read_data_command = lambda: update_db_from_SAGE_command(), manual_data_command = lambda: add_manual_input(app))
 app.read_data_btn['state'] = 'disabled'
-# app.manual_data_btn['state'] = 'disabled'
+app.manual_data_btn['state'] = 'disabled'
 
 app.add_model_lf()
 
-def run_simulation_cmd():
-    # lw = LoadingWindow(app)
-    th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-simulation.bat',))
+def run_experiment_cmd(experiment):
+    th = threading.Thread(target = run_experiment, args = (experiment,))
     th.start()
-    # lw.check(th)
     
-def run_optimization_cmd():
-    # lw = LoadingWindow(app)
-    th = threading.Thread(target = subprocess.run, args = (f'Model\AlphiaVisual_windows-optimization.bat',))
-    th.start()
-    # lw.check(th)
-
-app.run_simulation_btn['command'] = lambda: run_simulation_cmd()
+def run_experiment(experiment):
+    try:
+        subprocess.run(f'Model\AlphiaVisual_windows-{experiment}.bat ' + app.connection_mode.get().replace(" ", ""))
+    except Exception as e:
+        app.show_error(e, message = f"Could not run {experiment} experiment.")
+    
+app.run_simulation_btn['command'] = lambda: run_experiment_cmd('simulation')
 app.run_simulation_btn['state'] = 'disabled'
-app.run_optimization_btn['command'] = lambda: run_optimization_cmd()
+app.run_optimization_btn['command'] = lambda: run_optimization_cmd('optimization')
 app.run_optimization_btn['state'] = 'disabled'
 
 buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',

@@ -1,13 +1,18 @@
-import pandas as pd
-import numpy as np
+#Standard libraries imports
 import datetime
-import seaborn as sns
 import traceback
 import sys
 import os
+import tkinter as tk
+
+#Third party libraries
+import pandas as pd
+import numpy as np
+import seaborn as sns
+
+#Local imports
 sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 from CustomTable import CustomTable
-import tkinter as tk
 
 class AlphiaInputGenerator():
     def __init__(self, app):
