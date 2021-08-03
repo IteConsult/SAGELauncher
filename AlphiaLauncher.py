@@ -78,6 +78,9 @@ def show_demand_info():
     app.run_simulation_btn['state'] = 'normal'
     app.run_optimization_btn['state'] = 'normal'
     app.statusbar.config(text = 'Retrieving last demand info...')
+    # app.ax.cla()
+    # app.ax = app.fig.add_subplot(111)
+    # app.ax.xaxis_date()
     if app.connection_mode.get() == 'SAP HANA Cloud':
         try:
             app.last_update_str.set('Retrieving data...')
@@ -123,12 +126,10 @@ def show_demand_info():
     df['Due date'] = pd.to_datetime(df['Due date'])
     df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
     df = df[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
-    plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
+    app.plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
                   estimator = sum, ci = None, ax = app.ax)
-    app.ax.xaxis_date()
-    x_dates = df['Week start'].dt.strftime('%Y-%m-%d')
-    app.ax.set_xticklabels(labels=x_dates, rotation=45, ha='right')
-    app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
+    x_dates = df['Week start'].dt.strftime('%m/%d/%Y')
+    app.ax.set_xticklabels(labels = x_dates, rotation = 45, ha = 'right')
     app.fig.canvas.draw_idle()
     #Bring last error demand
     error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
@@ -208,7 +209,7 @@ app.to_excel = tk.IntVar()
 to_excel_cb = ttk.Checkbutton(import_settings_lf, variable = app.to_excel, text = 'Save REST tables as Excel Files')
 to_excel_cb.grid(column = 1, row = 1, padx = 40, pady = (0,10), sticky = 'w')
 
-last_demand_lf = ttk.LabelFrame(main_upper_frm, text = '    LAST DEMAND STORED')
+last_demand_lf = ttk.LabelFrame(main_upper_frm, text = '    CURRENT DEMAND')
 last_demand_lf.grid(row = 0, column = 1, sticky = 'nwes', padx = 20, pady = 20)
 
 labels_left_frame = ttk.Frame(last_demand_lf)
@@ -236,10 +237,14 @@ right_notebook.tab(1, state = 'disabled')
 sns.set_style('whitegrid', {'figure.facecolor': 'whitesmoke'})
 
 app.fig = Figure(figsize = (10,4), tight_layout = True)
-app.ax = app.fig.add_subplot(111)
 app.canvas = FigureCanvasTkAgg(app.fig, master = app.grafic_lf)
-app.canvas.draw()
+
+app.ax = app.fig.add_subplot(111)
+app.ax.xaxis_date()
 
 app.add_logo()
+
+# app.canvas.draw()
+app.canvas.get_tk_widget().pack(padx = 10, pady = 10, fill = tk.X)
 
 app.root.mainloop()

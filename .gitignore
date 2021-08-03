@@ -1,3 +1,4 @@
 Model/chromium
 __pycache__
-L2.py
+build
+dist
