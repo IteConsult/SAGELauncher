@@ -11,6 +11,13 @@ import subprocess
 import queue
 import collections
 
+#Local imports
+# sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
+from LauncherClass.Launcher import Launcher, LoadingWindow
+from LauncherClass.CustomTable import CustomTable
+from LauncherClass.ManualInput import ManualInput
+from InputGeneration import * #TODO list functions
+
 #Third party libraries
 import sqlalchemy
 from sqlalchemy_hana import dialect
@@ -19,12 +26,6 @@ from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationTool
 import pandas as pd
 import seaborn as sns
 
-#Local imports
-# sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
-from LauncherClass.Launcher import Launcher, LoadingWindow
-from CustomTable import CustomTable
-from ManualInput import ManualInput
-from InputGeneration import * #TODO list functions
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
@@ -209,7 +210,7 @@ connection_combobox.bind('<<ComboboxSelected>>', show_demand_info_command)
 
 app.to_excel = tk.IntVar()
 to_excel_cb = ttk.Checkbutton(import_settings_lf, variable = app.to_excel, text = 'Save REST tables as Excel Files')
-to_excel_cb.grid(column = 1, row = 1, padx = 40, pady = (0,10), sticky = 'w')
+#to_excel_cb.grid(column = 1, row = 1, padx = 40, pady = (0,10), sticky = 'w')
 
 last_demand_lf = ttk.LabelFrame(main_upper_frm, text = '    CURRENT DEMAND')
 last_demand_lf.grid(row = 0, column = 1, sticky = 'nwes', padx = 20, pady = 20)
