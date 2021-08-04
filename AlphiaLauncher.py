@@ -39,6 +39,7 @@ def connectToHANA():
         connection = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
     except Exception as e:
         print('Could not establish connection. ' + str(e))
+        tk.messagebox.showerror(title = 'Connection error', message = 'Could not establish connection.\n\n' + ''.join(traceback.format_exception_only(type(e), e)))
     return connection
 
 app.connectToHANA = connectToHANA
@@ -168,7 +169,7 @@ def run_experiment(experiment):
     
 app.run_simulation_btn['command'] = lambda: run_experiment_cmd('simulation')
 app.run_simulation_btn['state'] = 'disabled'
-app.run_optimization_btn['command'] = lambda: run_optimization_cmd('optimization')
+app.run_optimization_btn['command'] = lambda: run_experiment_cmd('optimization')
 app.run_optimization_btn['state'] = 'disabled'
 
 buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',
@@ -199,7 +200,8 @@ import_settings_lf = ttk.LabelFrame(main_upper_frm, text = '    IMPORT/EXPORT SE
 import_settings_lf.grid(row = 0, column = 0, sticky = 'nwes', padx = 20, pady = 20)
 
 app.connection_mode = tk.StringVar()
-connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud', 'Excel'], textvariable = app.connection_mode, state = 'readonly')
+# connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud', 'Excel'], textvariable = app.connection_mode, state = 'readonly')
+connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud'], textvariable = app.connection_mode, state = 'readonly')
 connection_combobox.grid(column = 1, row = 0, padx = 40, pady = 10, sticky = 'w')
 
 #Bind event 'connection_combobox selected' to show_demand_info_command function
