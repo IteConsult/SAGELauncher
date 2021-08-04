@@ -20,8 +20,8 @@ import pandas as pd
 import seaborn as sns
 
 #Local imports
-sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
-from Launcher import Launcher, LoadingWindow
+# sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
+from LauncherClass.Launcher import Launcher, LoadingWindow
 from CustomTable import CustomTable
 from ManualInput import ManualInput
 from InputGeneration import * #TODO list functions
