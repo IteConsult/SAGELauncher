@@ -58,7 +58,9 @@ class AlphiaInputGenerator():
             
             if self.app.to_excel.get():
                 for table in table_urls:
-                    self.app.q.append(f'Saving {table} as Excel spreadsheet')                    
+                    self.app.q.append(f'Saving {table} as Excel spreadsheet')
+                    if not os.path.exists('Raw tables'):
+                        os.mkdir('Raw tables')                    
                     try:
                         getattr(self, table).to_excel(f'Raw tables/{table.lower()}.xlsx', index = False)
                         print(f'Table {table} was uploaded to HANA succesfully.')
