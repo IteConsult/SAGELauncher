@@ -1,0 +1,17 @@
++-+-+ Alphia Simulation Run Data +-+-+
+
+Version: 2.9.3-for-Launcher-test
+Run date: 26-08-2021
+Run start time: 12:05:08.921754200
+Run end time: 12:18:43.692394300
+Total run time: 0:13:34
+
+Production start date: 15-7-2021
+Production end date: 23-9-2021
+
+Days substracted from raw material date: 15
+Days added to raw material date: 0
+Days substracted from due date: 0
+Days added to due date: 15
+
+Machine schedule: Activated

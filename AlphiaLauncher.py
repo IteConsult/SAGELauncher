@@ -1,3 +1,5 @@
+debug = True
+
 #Standard libraries imports
 import tkinter as tk
 from tkinter import ttk
@@ -203,8 +205,10 @@ connection_mode_label = ttk.Label(import_settings_lf, text = 'Select data source
 connection_mode_label.pack(pady = 10, padx = (40, 10), side = tk.LEFT)
 
 app.connection_mode = tk.StringVar()
-# connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud', 'Excel'], textvariable = app.connection_mode, state = 'readonly')
-connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud'], textvariable = app.connection_mode, state = 'readonly')
+if debug:
+    connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud', 'Excel'], textvariable = app.connection_mode, state = 'readonly')
+else:
+    connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud'], textvariable = app.connection_mode, state = 'readonly')
 # connection_combobox.grid(column = 1, row = 0, padx = 40, pady = 10, sticky = 'w')
 connection_combobox.pack(padx = 10, pady = 10, side = tk.LEFT)
 
@@ -213,7 +217,8 @@ connection_combobox.bind('<<ComboboxSelected>>', show_demand_info_command)
 
 app.to_excel = tk.IntVar()
 to_excel_cb = ttk.Checkbutton(import_settings_lf, variable = app.to_excel, text = 'Save REST tables as\n Excel Files')
-# to_excel_cb.pack(padx = 40, pady = (0,10), side = tk.LEFT)
+if debug:
+    to_excel_cb.pack(padx = 40, pady = (0,10), side = tk.LEFT)
 
 last_demand_lf = ttk.LabelFrame(main_upper_frm, text = '    CURRENT DEMAND')
 last_demand_lf.grid(row = 0, column = 1, sticky = 'nwes', padx = 20, pady = 20)

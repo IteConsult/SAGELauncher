@@ -63,7 +63,7 @@ class AlphiaInputGenerator():
                         os.mkdir('Raw tables')                    
                     try:
                         getattr(self, table).to_excel(f'Raw tables/{table.lower()}.xlsx', index = False)
-                        print(f'Table {table} was uploaded to HANA succesfully.')
+                        print(f'Table {table} was saved as Excel spreadsheet.')
                     except Exception as e:
                         print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
                         self.app.register_error(f'Couldn\'t save {table} as Excel spreadsheet. ', e)
@@ -328,20 +328,19 @@ class AlphiaInputGenerator():
                     'BlendPercentage', 'Family Sequence', 'Max Run Size (lb)', 'Weight', 'FormulaMinRunSize']]
         #Change column names
         BREAKOUT.rename({'ItemNumber': 'Finished good', 'ComponentItemNumber': 'Component formula', 'ProductType': 'Category', 'BlendPercentage': 'Blend percentage', 'FormulaMinRunSize': 'Minimum run size'}, axis = 1, inplace = True)
-        #TODO PROVISORIO Esto es para traer el type desde JDE. Funciona solamente si tenemos presente la tabla "MD_Bulk_Code.csv" de SQL_Files. Pedirla a Juan si no la tenés.
-        #JDE = pd.read_csv('MD_Bulk_Code.csv')
+        #TODO PROVISORIO Esto es para traer el type desde JDE
         BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'LegacyCJFCode']].groupby('ItemNumber').first(), left_on = 'Component formula', right_on = 'ItemNumber', how = 'left')
         BREAKOUT = BREAKOUT.merge(MD_Bulk_Code[['id', 'Type']], left_on = 'LegacyCJFCode', right_on = 'id', how = 'left')
         BREAKOUT['Category'] = BREAKOUT['Type'].copy().fillna('0').apply(lambda x: x.upper())
         BREAKOUT['Type-Shape-Size Concat'] = BREAKOUT['Type'].copy()
+        BREAKOUT.drop("LegacyCJFCode", axis = 1, inplace = True)
 
         #TODO provisorio ----
         #JDE_FG = pd.read_csv("Finished_Good.csv", header=0, index_col=False, keep_default_na=True)
         Finished_Good = Finished_Good[(Finished_Good.Account == "lb/Unit") & (Finished_Good.Measure == 500)]
         Finished_Good = Finished_Good[["Item_Code", "Measure"]]
-        BREAKOUT = BREAKOUT.drop("LegacyCJFCode", axis=1)
-        BREAKOUT = BREAKOUT.merge(ItemMaster[["ItemNumber", "LegacyCJFCode"]].groupby("ItemNumber").first(), left_on="Finished good", right_on="ItemNumber", how="left")
-        BREAKOUT = BREAKOUT.merge(Finished_Good, left_on="LegacyCJFCode", right_on="Item_Code", how="left")
+        BREAKOUT = BREAKOUT.merge(ItemMaster[["ItemNumber", "LegacyCJFCode"]].groupby("ItemNumber").first(), left_on = "Finished good", right_on = "ItemNumber", how = "left")
+        BREAKOUT = BREAKOUT.merge(Finished_Good, left_on = "LegacyCJFCode", right_on = "Item_Code", how = "left")
         BREAKOUT["Weight"] = np.where(BREAKOUT["Measure"] == 500, "500", BREAKOUT["Weight"])
         BREAKOUT.drop(['id', 'Type', 'Item_Code', 'Measure', "LegacyCJFCode"], axis = 1, inplace = True)
 
