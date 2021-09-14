@@ -1,4 +1,4 @@
 [submodule "LauncherClass"]
 	path = LauncherClass
 	url = https://github.com/IteConsult/LauncherClass.git
-	branch = main
+	branch = determinate-pgb

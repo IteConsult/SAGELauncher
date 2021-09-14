@@ -88,6 +88,7 @@ def show_demand_info():
         try:
             app.last_update_str.set('Retrieving data...')
             app.total_demand_str.set('Retrieving data...')
+            app.rejected_pounds_str.set('Retrieving data...')
             with app.connectToHANA() as connection:
                 #Bring time of last update
                 last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
@@ -95,6 +96,7 @@ def show_demand_info():
                 app.total_demand_str.set(f'{round(total_demand, 2):,}')
                 #Reading Error Demand table
                 ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
+                app.rejected_pounds_str.set(f"{ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
                 #Displaying demand graphic
                 df = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
             app.manual_data_btn['state'] = 'normal'
@@ -142,7 +144,14 @@ def show_demand_info():
     app.statusbar.config(text = '')
 
 def update_db_from_SAGE_command():
-    lw = LoadingWindow(app)
+    pgb_steps = 19
+    if app.connection_mode.get() == 'SAP HANA Cloud':
+        pgb_steps += 15
+    elif app.connection_mode.get() == 'Excel':
+        pgb_steps += 1
+    if app.to_excel.get():
+        pgb_steps += 7
+    lw = LoadingWindow(app, pgb_mode = 'indeterminate', pgb_maximum = pgb_steps)
     t = threading.Thread(target = input_generator.update_db_from_SAGE, daemon = True)
     t.start()
     app.root.after(0, lw.check, t)
@@ -226,8 +235,9 @@ last_demand_lf.grid(row = 0, column = 1, sticky = 'nwes', padx = 20, pady = 20)
 labels_left_frame = ttk.Frame(last_demand_lf)
 labels_left_frame.pack(side = tk.LEFT, padx = (40,30))
 
-ttk.Label(labels_left_frame, text = 'Data generation date and time: ').pack(anchor = 'w', pady = 10)
-ttk.Label(labels_left_frame, text = 'Total demand (in pounds): ').pack(anchor = 'w', pady = (0,10))
+ttk.Label(labels_left_frame, text = 'Data generation date and time: ').pack(anchor = 'e', pady = 10)
+ttk.Label(labels_left_frame, text = 'Total demand (in pounds): ').pack(anchor = 'e', pady = (0,10))
+ttk.Label(labels_left_frame, text = 'Rejected pounds: ').pack(anchor = 'e', pady = (0,10))
 
 labels_right_frame = ttk.Frame(last_demand_lf)
 labels_right_frame.pack(side = tk.LEFT)
@@ -237,6 +247,9 @@ ttk.Label(labels_right_frame, textvariable = app.last_update_str).pack(anchor = 
 
 app.total_demand_str = tk.StringVar(value = 'Select connection.')
 ttk.Label(labels_right_frame, textvariable = app.total_demand_str).pack(anchor = 'w', pady = (0,10))
+
+app.rejected_pounds_str = tk.StringVar(value = 'Select connection.')
+ttk.Label(labels_right_frame, textvariable = app.rejected_pounds_str).pack(anchor = 'w', pady = (0,10))
 
 app.grafic_lf = ttk.LabelFrame(display_info_frm, text = '   DEMAND PER WEEK')
 app.grafic_lf.pack(anchor = 'n', padx = 20, pady = 20, fill = tk.X, expand = True)
