@@ -31,6 +31,7 @@ class AlphiaInputGenerator():
             #Reads tables from REST services
             for table in table_urls:
                 self.app.q.append(f'Reading {table}')
+                self.app.lw.loading_pgb.step()
                 try:
                     # globals()[table] = pd.read_json(table_urls[table], dtype = str)
                     df = pd.read_json(table_urls[table], dtype = str)
@@ -47,6 +48,7 @@ class AlphiaInputGenerator():
                 with self.app.connectToHANA() as connection:
                     for table in table_urls:
                         self.app.q.append(f'Updating {table} in cloud database')
+                        self.app.lw.loading_pgb.step()
                         try:
                             connection.execute(f'DELETE FROM "SAGE".{table}')
                             getattr(self, table).to_sql(table.lower(), con = connection, if_exists = 'append', index = False, schema = 'sage')
@@ -59,6 +61,7 @@ class AlphiaInputGenerator():
             if self.app.to_excel.get():
                 for table in table_urls:
                     self.app.q.append(f'Saving {table} as Excel spreadsheet')
+                    self.app.lw.loading_pgb.step()
                     if not os.path.exists('Raw tables'):
                         os.mkdir('Raw tables')                    
                     try:
@@ -77,18 +80,20 @@ class AlphiaInputGenerator():
                 with self.app.connectToHANA() as connection:
                     for table in manual_files:
                         self.app.q.append(f'Loading {table}')
+                        self.app.lw.loading_pgb.step()
                         try:
                             df = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection).astype(str)
                             setattr(self, table, df)
                             print(f'Table {table} succesfully read from HANA.')
                         except Exception as e:
                             print('Couldn\'t read table {table} from HANA. ' + traceback.format_exc())
-                            self.app.register_error('Couldn\'t read table {table} from HANA. ', e)
+                            self.app.register_error(f'Couldn\'t read table {table} from HANA. ', e)
                             return 1
             #Read manual files from Excel files
             elif self.app.connection_mode.get() == 'Excel':
                 for table in manual_files:
                     self.app.q.append(f'Loading {table}')
+                    self.app.lw.loading_pgb.step()
                     try:
                         df = pd.read_excel(f'Model/Manual Files/{table}.xlsx').astype(str)
                         setattr(self, table, df)
@@ -111,8 +116,10 @@ class AlphiaInputGenerator():
         #1) Breakout
         try:
             self.app.q.append('Generating Breakout table')
+            self.app.lw.loading_pgb.step()
             self.BREAKOUT = self.generate_breakout_file()
             print('Breakout table succesfully generated.')
+            self.app.lw.loading_pgb.step()
         except Exception as e:
             print('Failed to generate Breakout table: ' + traceback.format_exc())
             self.app.register_error('Failed to generate Breakout table: ' , e)
@@ -121,6 +128,7 @@ class AlphiaInputGenerator():
         #2) Packlines and extruders
         try:
             self.app.q.append('Generating Packlines and Extruders tables')
+            self.app.lw.loading_pgb.step()
             self.PACKLINES, self.EXTRUDERS = self.generate_packlines_and_extruders()
             print('Packlines and Extruders tables succesfully generated.')
         except Exception as e:
@@ -131,6 +139,7 @@ class AlphiaInputGenerator():
         #3) Demand (must be created after Breakout, Packlines and Extruders in order to validate)
         try:
             self.app.q.append('Generating Demand table')
+            self.app.lw.loading_pgb.step()
             self.DEMAND, self.ERROR_DEMAND = self.generate_demand()
             print('Demand table succesfully generated.')
         except Exception as e:
@@ -141,6 +150,7 @@ class AlphiaInputGenerator():
         #4) Inventory bulk (must be created after Demand in order to validate)
         try:
             self.app.q.append('Generating Bulk Inventory table')
+            self.app.lw.loading_pgb.step()
             self.INVENTORY_BULK = self.generate_inventory_bulk()
             print('Bulk inventory table succesfully generated.')
         except Exception as e:
@@ -151,19 +161,21 @@ class AlphiaInputGenerator():
         #5) WO Demand for SAC
         try:
             self.app.q.append('Generating WO Demand')
-            print('Generating WO Demand')
+            self.app.lw.loading_pgb.step()
             self.WO_DEMAND = self.generate_wo_demand()
+            print('Generating WO Demand')
         except Exception as e:
             print('Failed to generate WO Demand table: ' + traceback.format_exc())
             self.app.register_error('Failed to generate WO Demand table: ', e)
             return 1
 
-        ### Uploading tables
+        ### Uploading generated tables
         if self.app.connection_mode.get() == 'SAP HANA Cloud':
             with self.app.connectToHANA() as connection:
                 #1) Breakout
                 try:
                     self.app.q.append('Uploading Breakout table')
+                    self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "ANYLOGIC"."BREAKOUT_FILE"')
                     self.BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
                     print('Breakout table succesfully uploaded to HANA.')
@@ -171,9 +183,10 @@ class AlphiaInputGenerator():
                     print('Failed to upload Breakout table to HANA: ', e)
                     return 1
 
-                #2) Packlines and extruders
+                #2) Packlines
                 try:
                     self.app.q.append('Uploading Packlines table')
+                    self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "ANYLOGIC"."PACKLINES"')
                     self.PACKLINES.to_sql('packlines', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
                     print('Packlines table succesfully uploaded to HANA.')
@@ -181,8 +194,10 @@ class AlphiaInputGenerator():
                     print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
                     self.app.register_error('Failed to upload Packlines table to HANA: ', e)
                     return 1
+                #3) Extruders
                 try:
                     self.app.q.append('Uploading Extruders table')
+                    self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
                     self.EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = connection, if_exists ='append', index = False)
                     print('Extruders table succesfully uploaded to HANA.')
@@ -191,8 +206,10 @@ class AlphiaInputGenerator():
                     self.app.register_error('Failed to upload Extruders table to HANA: ', e)
                     return 1
 
-                #3) Demand and Error Demand (must be created after Breakout, Packlines and Extruders in order to be able to validate)
+                #4) Demand (must be created after Breakout, Packlines and Extruders in order to be able to validate)
                 try:
+                    self.app.q.append('Uploading Demand table')
+                    self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
                     self.DEMAND.to_sql('demand', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
                     print('Demand table succesfully uploaded to HANA.')
@@ -200,8 +217,10 @@ class AlphiaInputGenerator():
                     print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
                     self.app.register_error('Failed to upload Demand table to HANA: ', e)
                     return 1
+                #5) Error Demand
                 try:
                     self.app.q.append('Uploading Error demand table')
+                    self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
                     self.ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
                     print('Error demand table succesfully uploaded to HANA.')
@@ -210,9 +229,10 @@ class AlphiaInputGenerator():
                     self.app.register_error('Failed to upload Error demand table to HANA: ', e)
                     return 1
 
-                #4) Inventory bulk (must be created after Demand in order to validate)
+                #6) Inventory bulk (must be created after Demand in order to validate)
                 try:
                     self.app.q.append('Uploading Bulk inventory table')
+                    self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "ANYLOGIC"."BULK_INVENTORY"')
                     self.INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
                     print('Bulk inventory table succesfully uploaded to HANA.')
@@ -221,9 +241,10 @@ class AlphiaInputGenerator():
                     self.app.register_error('Failed to upload Bulk inventory table to HANA: ', e)
                     return 1
                 
-                #5) WO Demand for SAC
+                #7) WO Demand for SAC
                 try:
                     self.app.q.append('Uploading WO Demand table')
+                    self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
                     self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
                 except Exception as e:
@@ -231,7 +252,7 @@ class AlphiaInputGenerator():
                     self.app.register_error('Failed to upload WO Demand table to HANA: ', e)
                     return 1
                     
-                #6) Save upload time info
+                #8) Save upload time info
                 try:
                     connection.execute('DELETE FROM "SAGE"."LOG"')
                     current_time = pd.to_datetime(datetime.datetime.now())
@@ -245,6 +266,7 @@ class AlphiaInputGenerator():
                     self.app.register_error('Failed to update backup time: ', e)
         elif self.app.connection_mode.get() == 'Excel':
             self.app.q.append('Saving tables as Excel files')
+            self.app.lw.loading_pgb.step()
             print('Saving tables as Excel files')
             dic = {'BREAKOUT': ('Model/Database Input/Breakout_file.xlsx', 'Breakout'),
                 'PACKLINES': ('Model/Database Input/Packlines.xlsx', 'Packlines'),
