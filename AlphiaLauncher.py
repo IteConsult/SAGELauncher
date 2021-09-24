@@ -1,4 +1,4 @@
-debug = True
+debug = False
 
 #Standard libraries imports
 import tkinter as tk
