@@ -403,11 +403,12 @@ class AlphiaInputGenerator():
         RATES = RATES.query('(Area == "PACK" and CategoryCode == "FG") or (Area == "EXTR" and CategoryCode == "INT")').copy()
         RATES['OperationTimeUnits'] = RATES['OperationTimeUnits'].map({'1': '1', '2': '60'})
         RATES = RATES.astype({'BaseQuantity': float, 'ItemWeight': float, 'OperationTimeUnits': int, 'OperationTime': float})
-        RATES['Pounds/hour'] = RATES['BaseQuantity']*RATES['ItemWeight']/(RATES['OperationTimeUnits']*RATES['OperationTime'])
+        calculated_rate = RATES['BaseQuantity']*RATES['ItemWeight']/(RATES['OperationTimeUnits']*RATES['OperationTime'])
+        RATES['Pounds/hour'] = np.where(~calculated_rate.isna() & calculated_rate != 0, calculated_rate, RATES['UnitsPerHour'])
         #Drop those for which the calculation failed (usually because weight is missing)
         RATES.dropna(subset=['Pounds/hour'], inplace = True)
         #Drop columns that won't be needed anymore
-        RATES.drop(['UseStatus', 'OperationNumber', 'OperationUOM', 'OperationTime', 'OperationTimeUnits', 'BaseQuantity', 'ItemWeight'], axis = 1, inplace = True)
+        RATES.drop(['UseStatus', 'OperationNumber', 'OperationUOM', 'OperationTime', 'OperationTimeUnits', 'BaseQuantity', 'ItemWeight', 'UnitsPerHour'], axis = 1, inplace = True)
         #Split the dataframe
         PACKLINES = RATES.query('Area == "PACK"').drop(['Area', 'CategoryCode'], axis = 1)
         EXTRUDERS = RATES.query('Area == "EXTR"').drop(['Area', 'CategoryCode'], axis = 1)
@@ -560,9 +561,9 @@ class AlphiaInputGenerator():
         filter1 = WorkOrders_copy['OrderStatus'] == '1'
         WorkOrders_copy = WorkOrders_copy[filter1]
         #rename columns
-        WorkOrders_copy.rename(columns= {'Facility':'Facility Code',
-                                         'Purchase_Order':'Purchase Order',
-                                         'WorkCenter':'WorkCenter Code'} ,inplace=True)
+        WorkOrders_copy.rename(columns= {'Facility': 'Facility Code',
+                                         'PoNumber': 'Purchase Order',
+                                         'WorkCenter': 'WorkCenter Code'} ,inplace=True)
         #merge dataframes
         merge = WorkOrders_copy.merge(ItemMaster_copy[['ItemNumber', 
                                                        'CategoryCode',
@@ -600,6 +601,7 @@ class AlphiaInputGenerator():
         #name 
         merge.name = "WO_DEMAND"
         #return dataframe
+        
         return merge
 
     def display_info(self):
