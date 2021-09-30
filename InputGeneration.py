@@ -14,6 +14,9 @@ import seaborn as sns
 sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 from CustomTable import CustomTable
 
+ANYLOGIC_TABLES_SCHEMA = 'ANYLOGIC_3'
+SAGE_TABLES_SCHEMA = 'SAGE_3'
+
 class AlphiaInputGenerator():
     def __init__(self, app):
         self.app = app
@@ -25,6 +28,7 @@ class AlphiaInputGenerator():
                       'Facility': r'http://10.4.240.65/api/IntegrationAPI/GetItemFacility',
                       'ItemMaster': r'http://10.4.240.65/api/IntegrationAPI/GetItemMstr',
                       'RoutingAndRates': r'http://10.4.240.65/api/IntegrationAPI/GetRoutingAndRates',
+                      'SalesOrders': r'http://10.4.240.65/api/IntegrationAPI/GetSalesOrders',
                       'WorkCenters': r'http://10.4.240.65/api/IntegrationAPI/GetWorkCenters',
                       'WorkOrders': r'http://10.4.240.65/api/IntegrationAPI/GetWorkOrders'}
 
@@ -50,8 +54,8 @@ class AlphiaInputGenerator():
                         self.app.q.append(f'Updating {table} in cloud database')
                         self.app.lw.loading_pgb.step()
                         try:
-                            connection.execute(f'DELETE FROM "SAGE".{table}')
-                            getattr(self, table).to_sql(table.lower(), con = connection, if_exists = 'append', index = False, schema = 'sage')
+                            connection.execute(f'DELETE FROM {SAGE_TABLES_SCHEMA}.{table}')
+                            getattr(self, table).to_sql(table.lower(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA)
                             print(f'Table {table} was uploaded to HANA succesfully.')
                         except Exception as e:
                             print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
@@ -74,7 +78,7 @@ class AlphiaInputGenerator():
 
             #Read manual files from HANA
             #TODO pasar a diccionario con valores la lista de columnas
-            manual_files = ['Model_WorkCenters', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families', 'Extruders_Schedule']
+            manual_files = ['Model_WorkCenters_3', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families', 'Extruders_Schedule']
             
             if self.app.connection_mode.get() == 'SAP HANA Cloud':
                 with self.app.connectToHANA() as connection:
@@ -176,8 +180,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Breakout table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "ANYLOGIC"."BREAKOUT_FILE"')
-                    self.BREAKOUT.to_sql('breakout_file', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."BREAKOUT_FILE"')
+                    self.BREAKOUT.to_sql('breakout_file', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Breakout table succesfully uploaded to HANA.')
                 except Exception as e:
                     print('Failed to upload Breakout table to HANA: ', e)
@@ -187,8 +191,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Packlines table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "ANYLOGIC"."PACKLINES"')
-                    self.PACKLINES.to_sql('packlines', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."PACKLINES"')
+                    self.PACKLINES.to_sql('packlines', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Packlines table succesfully uploaded to HANA.')
                 except Exception as e:
                     print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
@@ -198,8 +202,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Extruders table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "ANYLOGIC"."EXTRUDERS"')
-                    self.EXTRUDERS.to_sql('extruders', schema = 'anylogic', con = connection, if_exists ='append', index = False)
+                    connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."EXTRUDERS"')
+                    self.EXTRUDERS.to_sql('extruders', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists ='append', index = False)
                     print('Extruders table succesfully uploaded to HANA.')
                 except Exception as e:
                     print('Failed to upload Extruders table to HANA: ' + traceback.format_exc())
@@ -210,8 +214,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Demand table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "ANYLOGIC"."DEMAND"')
-                    self.DEMAND.to_sql('demand', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."DEMAND"')
+                    self.DEMAND.to_sql('demand', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Demand table succesfully uploaded to HANA.')
                 except Exception as e:
                     print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
@@ -221,8 +225,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Error demand table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
-                    self.ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                    connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND_3"')
+                    self.ERROR_DEMAND.to_sql('error_demand_3', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
                     print('Error demand table succesfully uploaded to HANA.')
                 except Exception as e:
                     print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
@@ -233,20 +237,20 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Bulk inventory table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "ANYLOGIC"."BULK_INVENTORY"')
-                    self.INVENTORY_BULK.to_sql('bulk_inventory', schema = 'anylogic', con = connection, if_exists = 'append', index = False)
+                    connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."BULK_INVENTORY"')
+                    self.INVENTORY_BULK.to_sql('bulk_inventory', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Bulk inventory table succesfully uploaded to HANA.')
                 except Exception as e:
                     print('Failed to upload Bulk inventory table to HANA: ' + traceback.format_exc())
                     self.app.register_error('Failed to upload Bulk inventory table to HANA: ', e)
                     return 1
                 
-                #7) WO Demand for SAC
+                # #7) WO Demand for SAC
                 try:
                     self.app.q.append('Uploading WO Demand table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
-                    self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                    connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND_3" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
+                    self.WO_DEMAND.to_sql('wo_demand_3', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
                 except Exception as e:
                     print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
                     self.app.register_error('Failed to upload WO Demand table to HANA: ', e)
@@ -254,10 +258,10 @@ class AlphiaInputGenerator():
                     
                 #8) Save upload time info
                 try:
-                    connection.execute('DELETE FROM "SAGE"."LOG"')
+                    connection.execute(f'DELETE FROM "{SAGE_TABLES_SCHEMA}"."LOG"')
                     current_time = pd.to_datetime(datetime.datetime.now())
                     total_demand = self.DEMAND['Demand quantity (pounds)'].sum()
-                    pd.DataFrame({'TIME': [current_time], 'TOTAL_DEMAND': [round(total_demand,2)]}).to_sql('log', schema = 'sage', con = connection, if_exists = 'append', index = False)
+                    pd.DataFrame({'TIME': [current_time], 'TOTAL_DEMAND': [round(total_demand,2)]}).to_sql('log', schema = SAGE_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Updated backup time successfully.')
                     self.app.total_demand_str.set(f"{total_demand:,.2f}")
                     self.app.last_update_str.set(current_time.strftime("%d/%m/%y %H:%M"))
@@ -371,7 +375,7 @@ class AlphiaInputGenerator():
     def generate_packlines_and_extruders(self):
         RoutingAndRates = self.RoutingAndRates
         ItemMaster = self.ItemMaster
-        Model_WorkCenters = self.Model_WorkCenters
+        Model_WorkCenters = self.Model_WorkCenters_3
         Facility = self.Facility
         Finished_Good = self.Finished_Good
     
@@ -434,41 +438,50 @@ class AlphiaInputGenerator():
         return PACKLINES, EXTRUDERS
 
     def generate_demand(self):
-        WorkOrders = self.WorkOrders
+        WorkOrders = self.WorkOrders.copy()
+        SalesOrders = self.SalesOrders.copy()
         ItemMaster = self.ItemMaster
-        Model_WorkCenters = self.Model_WorkCenters
+        Model_WorkCenters = self.Model_WorkCenters_3
         Product_Priority = self.Product_Priority
         Customer_Priority = self.Customer_Priority
         BREAKOUT = self.BREAKOUT
         PACKLINES = self.PACKLINES
         EXTRUDERS = self.EXTRUDERS
     
-        #TODO PROVISORIO
-        DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
+        SalesOrders.rename({'SalesOrderNumber': 'OrderNumber', 'SalesOrderStatus': 'OrderStatus', 'PlannedStartDate': 'PlannedStart', 'PlannedEndDate': 'PlannedEnd'}, axis = 1, inplace = True)
+        SalesOrders.drop(['RoutingNumber', 'RoutingCode'], axis = 1, inplace = True)
+        SalesOrders['OrderType'] = 'Sales Order'
+        WorkOrders.rename({'WorkOrderNumber': 'OrderNumber', 'PlannedQty': 'PlannedQuantity', 'CompletedQty': 'CompletedQuantity', 'PoNumber': 'PONumber'}, axis = 1, inplace = True)
+        WorkOrders.drop(['Operation', 'WorkCenter'], axis = 1, inplace = True)
+        WorkOrders['OrderType'] = 'WorkOrder'
+        #DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
+        #Get WorkOrders where possible, then SalesOrders
+        DEMAND = pd.concat([WorkOrders, SalesOrders.merge(WorkOrders[['ItemNumber', 'PONumber']], on = ['ItemNumber', 'PONumber'], how = 'left', indicator = True).query('_merge == \'left_only\'').drop('_merge', axis = 1)], ignore_index = True)
         #Filter only FG items
-        DEMAND = DEMAND.query('CategoryCode == "FG"').copy()
+        DEMAND = DEMAND.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
+        DEMAND = DEMAND.query('CategoryCode == "FG"')
         #Calculate demand in pounds and keep those with positive demand
-        DEMAND = DEMAND.astype({'PlannedQty': float, 'CompletedQty': float, 'ItemWeight': float})
-        DEMAND['Demand quantity (pounds)'] = ((DEMAND['PlannedQty'] - DEMAND['CompletedQty'])*DEMAND['ItemWeight']).round(0)
+        DEMAND = DEMAND.astype({'PlannedQuantity': float, 'CompletedQuantity': float, 'ItemWeight': float})
+        DEMAND['Demand quantity (pounds)'] = ((DEMAND['PlannedQuantity'] - DEMAND['CompletedQuantity'])*DEMAND['ItemWeight']).round(0)
         DEMAND = DEMAND[DEMAND['Demand quantity (pounds)'] > 0]
         #Filter items not in Brekaout
         DEMAND['in_breakout'] = DEMAND['ItemNumber'].isin(BREAKOUT['Finished good'].values)
-        NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber', 'WorkOrderNumber', 'Demand quantity (pounds)']].assign(Cause = 'Finished good not in breakout', ComponentFormula = 0).rename({'ItemNumber': 'ItemNumber FG', 'Demand quantity (pounds)': 'Rejected Pounds', 'ComponentFormula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1)
-        NOT_IN_BREAKOUT = NOT_IN_BREAKOUT[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
+        NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber', 'OrderNumber', 'Demand quantity (pounds)']].assign(Cause = 'Finished good not in breakout', ComponentFormula = 0).rename({'ItemNumber': 'ItemNumber FG', 'Demand quantity (pounds)': 'Rejected Pounds', 'ComponentFormula': 'ItemNumber INT', 'OrderNumber': 'Order Number'}, axis = 1)
+        NOT_IN_BREAKOUT = NOT_IN_BREAKOUT[['ItemNumber FG', 'Order Number', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
         DEMAND = DEMAND.query('in_breakout == True')
-        #Keep only FG whose every CF has extrusion rate (TODO or is a buyable)
-        CFS_IN_DEMAND = DEMAND[['ItemNumber', 'Demand quantity (pounds)', 'WorkOrderNumber']].merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
+        #Keep only FG whose every CF has extrusion rate (TODO: or is a buyable)
+        CFS_IN_DEMAND = DEMAND[['ItemNumber', 'Demand quantity (pounds)', 'OrderNumber']].merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         CFS_IN_DEMAND['in_extruders'] = CFS_IN_DEMAND['Component formula'].isin(EXTRUDERS['Component formula'].unique())
-        NOT_IN_EXTRUDERS = CFS_IN_DEMAND[['Finished good', 'Component formula', 'in_extruders', 'Blend percentage', 'WorkOrderNumber', 'Demand quantity (pounds)']].merge(CFS_IN_DEMAND[['Finished good', 'in_extruders']].groupby('Finished good', as_index = False).all(), on = 'Finished good', how = 'left', suffixes = ['_cf', '_fg'])
+        NOT_IN_EXTRUDERS = CFS_IN_DEMAND[['Finished good', 'Component formula', 'in_extruders', 'Blend percentage', 'OrderNumber', 'Demand quantity (pounds)']].merge(CFS_IN_DEMAND[['Finished good', 'in_extruders']].groupby('Finished good', as_index = False).all(), on = 'Finished good', how = 'left', suffixes = ['_cf', '_fg'])
         NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS.copy().query('in_extruders_fg == False')
         NOT_IN_EXTRUDERS['Rejected Pounds'] = NOT_IN_EXTRUDERS['Demand quantity (pounds)'].astype(float) * NOT_IN_EXTRUDERS['Blend percentage'].astype(float)
         NOT_IN_EXTRUDERS['Cause'] = 'At least one component has no extrusion rate'
-        NOT_IN_EXTRUDERS.rename({'Finished good': 'ItemNumber FG', 'Component formula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1, inplace = True)
-        NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
+        NOT_IN_EXTRUDERS.rename({'Finished good': 'ItemNumber FG', 'Component formula': 'ItemNumber INT', 'OrderNumber': 'Order Number'}, axis = 1, inplace = True)
+        NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS[['ItemNumber FG', 'Order Number', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
         DEMAND = DEMAND.merge(CFS_IN_DEMAND[['Finished good', 'in_extruders']].groupby('Finished good').all(), left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         DEMAND = DEMAND.copy().query('in_extruders == True').drop('in_extruders', axis = 1)
         #Bring Model plant column
-        DEMAND = DEMAND.merge(Model_WorkCenters[['WorkCenter', 'Model plant']], on = 'WorkCenter', how = 'left')
+        DEMAND = DEMAND.merge(Model_WorkCenters[['Facility', 'Model plant']].drop_duplicates(), on = 'Facility', how = 'left')
         #Keep only FG with packing rate in plant
         DEMAND = DEMAND.merge(PACKLINES[['Finished good', 'Plant']].groupby(['Finished good', 'Plant'], as_index = False).first(), left_on = ['ItemNumber', 'Model plant'], right_on = ['Finished good', 'Plant'], how = 'left', indicator = True)
         # DEMAND['in_packlines'] = DEMAND['ItemNumber'].isin(PACKLINES['Finished good'].unique())
@@ -476,9 +489,9 @@ class AlphiaInputGenerator():
         NOT_IN_PACKLINES = DEMAND.query('_merge == \'left_only\'').copy()
         NOT_IN_PACKLINES = NOT_IN_PACKLINES.merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         NOT_IN_PACKLINES['Rejected Pounds'] = NOT_IN_PACKLINES['Demand quantity (pounds)'].astype(float) * NOT_IN_PACKLINES['Blend percentage'].astype(float)
-        NOT_IN_PACKLINES.rename({'WorkOrderNumber': 'Work Order', 'ItemNumber': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
+        NOT_IN_PACKLINES.rename({'OrderNumber': 'Order Number', 'ItemNumber': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
         NOT_IN_PACKLINES['Cause'] = 'Finished good has no packing rate'
-        NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
+        NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Order Number', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
         # DEMAND = DEMAND.query('in_packlines == True').copy()
         DEMAND = DEMAND.query('_merge == \'both\'').copy()
         DEMAND.drop(['Finished good', 'Plant'], axis = 1, inplace = True)
@@ -501,11 +514,11 @@ class AlphiaInputGenerator():
         DEMAND['Original due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
         #TODO corregir process date?
         DEMAND['Process date'] = datetime.date.today().strftime("%Y-%m-%d")
-        DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location', 'WorkCenter': 'Packline',
-                       'WorkOrderNumber': 'Work order', 'Product Priority': 'Priority product', 'Customer Priority': 'Priority'}, axis = 1, inplace = True)
+        DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location',
+                       'OrderNumber': 'Order Number', 'Product Priority': 'Priority product', 'Customer Priority': 'Priority'}, axis = 1, inplace = True)
         DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Formula', 'Inventory', 'Priority product', 'Priority', 'Raw material date',
                          'Demand quantity (pounds)', 'Due date', 'Location', 'Purchase order', 'Sales order', 'Original due date',
-                         'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
+                         'Entity', 'Order Number', 'Process date', 'Facility']]
 
         ERROR_DEMAND = pd.concat([NOT_IN_BREAKOUT, NOT_IN_EXTRUDERS, NOT_IN_PACKLINES], ignore_index = True)
         ERROR_DEMAND['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
@@ -517,7 +530,7 @@ class AlphiaInputGenerator():
         Inventory = self.Inventory
         ItemMaster = self.ItemMaster
         Facility = self.Facility
-        Model_WorkCenters = self.Model_WorkCenters
+        Model_WorkCenters = self.Model_WorkCenters_3
         DEMAND = self.DEMAND
         BREAKOUT = self.BREAKOUT
     
@@ -572,6 +585,7 @@ class AlphiaInputGenerator():
                                                       on='ItemNumber',
                                                       how = 'inner')
         #filter based on two conditions
+        print(merge)
         merge = merge[
                       ((merge["CategoryCode"]=="INT") & (merge["Operation"]=='20')) | 
                       ((merge["CategoryCode"]=='FG') & (merge["Operation"]=='10'))
