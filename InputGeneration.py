@@ -14,8 +14,8 @@ import seaborn as sns
 sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 from CustomTable import CustomTable
 
-ANYLOGIC_TABLES_SCHEMA = 'ANYLOGIC_3'
-SAGE_TABLES_SCHEMA = 'SAGE_3'
+ANYLOGIC_TABLES_SCHEMA = 'ANYLOGIC'
+SAGE_TABLES_SCHEMA = 'SAGE'
 
 class AlphiaInputGenerator():
     def __init__(self, app):
@@ -225,8 +225,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Error demand table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND_3"')
-                    self.ERROR_DEMAND.to_sql('error_demand_3', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                    connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
+                    self.ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
                     print('Error demand table succesfully uploaded to HANA.')
                 except Exception as e:
                     print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
@@ -249,8 +249,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading WO Demand table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND_3" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
-                    self.WO_DEMAND.to_sql('wo_demand_3', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                    connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
+                    self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
                 except Exception as e:
                     print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
                     self.app.register_error('Failed to upload WO Demand table to HANA: ', e)
@@ -265,6 +265,7 @@ class AlphiaInputGenerator():
                     print('Updated backup time successfully.')
                     self.app.total_demand_str.set(f"{total_demand:,.2f}")
                     self.app.last_update_str.set(current_time.strftime("%d/%m/%y %H:%M"))
+                    self.app.rejected_pounds_str.set(f"{self.ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
                 except Exception as e:
                     print('Failed to update backup time: ' + traceback.format_exc())
                     self.app.register_error('Failed to update backup time: ', e)
@@ -297,6 +298,7 @@ class AlphiaInputGenerator():
                 last_demand_stored_log.write(f"{current_time}\n{total_demand}")
             self.app.total_demand_str.set(total_demand)
             self.app.last_update_str.set(current_time)
+            self.app.rejected_pounds_str.set(f"{self.ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
 
         self.display_info()
 
@@ -310,8 +312,9 @@ class AlphiaInputGenerator():
         Finished_Good = self.Finished_Good
         Families = self.Families
     
+        BOM['Quantity'] = BOM['Quantity'].astype(float)
         #Merging with ItemMaster
-        BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
+        BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].groupby(['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber'], as_index = False).sum().merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
         BREAKOUT.dropna(subset = ['ItemWeight', 'BagWeight'], inplace = True)
         #Keep FG items only
         BREAKOUT = BREAKOUT.query('CategoryCode == "FG"').drop('CategoryCode', axis = 1)
@@ -333,6 +336,14 @@ class AlphiaInputGenerator():
         BREAKOUT['Quantity'] = BREAKOUT['Quantity'].astype(float)
         BREAKOUT = BREAKOUT[['ItemNumber', 'Facility', 'BomCode', 'Quantity']].groupby(['ItemNumber', 'Facility', 'BomCode']).sum().rename({'Quantity': 'BlendPercentage'}, axis = 1).query('BlendPercentage != 0').merge(BREAKOUT, left_index = True, right_on = ['ItemNumber', 'Facility', 'BomCode'], how = 'right')
         BREAKOUT['BlendPercentage'] = BREAKOUT['Quantity']/BREAKOUT['BlendPercentage']
+        
+        def fixBlends(s):
+            if s.shape[0] > 2:
+                s.iloc[-1] = 1 - s.iloc[:-1].sum()
+            return s
+        
+        #Fix blends so that they add up to 1
+        BREAKOUT['BlendPercentage'] = BREAKOUT[['ItemNumber', 'Facility', 'BomCode', 'BlendPercentage']].groupby(['ItemNumber', 'Facility', 'BomCode']).transform(fixBlends)
         #Weight is BagSize
         BREAKOUT.rename({'BagWeight': 'Weight'}, axis = 1, inplace = True)
         BREAKOUT['Weight'] = BREAKOUT['Weight'].astype(float).round(2)
@@ -448,13 +459,10 @@ class AlphiaInputGenerator():
         PACKLINES = self.PACKLINES
         EXTRUDERS = self.EXTRUDERS
     
-        SalesOrders.rename({'SalesOrderNumber': 'OrderNumber', 'SalesOrderStatus': 'OrderStatus', 'PlannedStartDate': 'PlannedStart', 'PlannedEndDate': 'PlannedEnd'}, axis = 1, inplace = True)
+        SalesOrders.rename({'SalesOrderNumber': 'WorkOrderNumber', 'SalesOrderStatus': 'OrderStatus', 'PlannedStartDate': 'PlannedStart', 'PlannedEndDate': 'PlannedEnd'}, axis = 1, inplace = True)
         SalesOrders.drop(['RoutingNumber', 'RoutingCode'], axis = 1, inplace = True)
-        SalesOrders['OrderType'] = 'Sales Order'
-        WorkOrders.rename({'WorkOrderNumber': 'OrderNumber', 'PlannedQty': 'PlannedQuantity', 'CompletedQty': 'CompletedQuantity', 'PoNumber': 'PONumber'}, axis = 1, inplace = True)
+        WorkOrders.rename({'PlannedQty': 'PlannedQuantity', 'CompletedQty': 'CompletedQuantity', 'PoNumber': 'PONumber'}, axis = 1, inplace = True)
         WorkOrders.drop(['Operation', 'WorkCenter'], axis = 1, inplace = True)
-        WorkOrders['OrderType'] = 'WorkOrder'
-        #DEMAND = WorkOrders.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
         #Get WorkOrders where possible, then SalesOrders
         DEMAND = pd.concat([WorkOrders, SalesOrders.merge(WorkOrders[['ItemNumber', 'PONumber']], on = ['ItemNumber', 'PONumber'], how = 'left', indicator = True).query('_merge == \'left_only\'').drop('_merge', axis = 1)], ignore_index = True)
         #Filter only FG items
@@ -466,32 +474,30 @@ class AlphiaInputGenerator():
         DEMAND = DEMAND[DEMAND['Demand quantity (pounds)'] > 0]
         #Filter items not in Brekaout
         DEMAND['in_breakout'] = DEMAND['ItemNumber'].isin(BREAKOUT['Finished good'].values)
-        NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber', 'OrderNumber', 'Demand quantity (pounds)']].assign(Cause = 'Finished good not in breakout', ComponentFormula = 0).rename({'ItemNumber': 'ItemNumber FG', 'Demand quantity (pounds)': 'Rejected Pounds', 'ComponentFormula': 'ItemNumber INT', 'OrderNumber': 'Order Number'}, axis = 1)
-        NOT_IN_BREAKOUT = NOT_IN_BREAKOUT[['ItemNumber FG', 'Order Number', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
+        NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber', 'WorkOrderNumber', 'Demand quantity (pounds)']].assign(Cause = 'Finished good not in breakout', ComponentFormula = 0).rename({'ItemNumber': 'ItemNumber FG', 'Demand quantity (pounds)': 'Rejected Pounds', 'ComponentFormula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1)
+        NOT_IN_BREAKOUT = NOT_IN_BREAKOUT[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
         DEMAND = DEMAND.query('in_breakout == True')
         #Keep only FG whose every CF has extrusion rate (TODO: or is a buyable)
-        CFS_IN_DEMAND = DEMAND[['ItemNumber', 'Demand quantity (pounds)', 'OrderNumber']].merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
+        CFS_IN_DEMAND = DEMAND[['ItemNumber', 'Demand quantity (pounds)', 'WorkOrderNumber']].merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         CFS_IN_DEMAND['in_extruders'] = CFS_IN_DEMAND['Component formula'].isin(EXTRUDERS['Component formula'].unique())
-        NOT_IN_EXTRUDERS = CFS_IN_DEMAND[['Finished good', 'Component formula', 'in_extruders', 'Blend percentage', 'OrderNumber', 'Demand quantity (pounds)']].merge(CFS_IN_DEMAND[['Finished good', 'in_extruders']].groupby('Finished good', as_index = False).all(), on = 'Finished good', how = 'left', suffixes = ['_cf', '_fg'])
+        NOT_IN_EXTRUDERS = CFS_IN_DEMAND[['Finished good', 'Component formula', 'in_extruders', 'Blend percentage', 'WorkOrderNumber', 'Demand quantity (pounds)']].merge(CFS_IN_DEMAND[['Finished good', 'in_extruders']].groupby('Finished good', as_index = False).all(), on = 'Finished good', how = 'left', suffixes = ['_cf', '_fg'])
         NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS.copy().query('in_extruders_fg == False')
         NOT_IN_EXTRUDERS['Rejected Pounds'] = NOT_IN_EXTRUDERS['Demand quantity (pounds)'].astype(float) * NOT_IN_EXTRUDERS['Blend percentage'].astype(float)
         NOT_IN_EXTRUDERS['Cause'] = 'At least one component has no extrusion rate'
-        NOT_IN_EXTRUDERS.rename({'Finished good': 'ItemNumber FG', 'Component formula': 'ItemNumber INT', 'OrderNumber': 'Order Number'}, axis = 1, inplace = True)
-        NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS[['ItemNumber FG', 'Order Number', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
+        NOT_IN_EXTRUDERS.rename({'Finished good': 'ItemNumber FG', 'Component formula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1, inplace = True)
+        NOT_IN_EXTRUDERS = NOT_IN_EXTRUDERS[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
         DEMAND = DEMAND.merge(CFS_IN_DEMAND[['Finished good', 'in_extruders']].groupby('Finished good').all(), left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         DEMAND = DEMAND.copy().query('in_extruders == True').drop('in_extruders', axis = 1)
         #Bring Model plant column
         DEMAND = DEMAND.merge(Model_WorkCenters[['Facility', 'Model plant']].drop_duplicates(), on = 'Facility', how = 'left')
         #Keep only FG with packing rate in plant
         DEMAND = DEMAND.merge(PACKLINES[['Finished good', 'Plant']].groupby(['Finished good', 'Plant'], as_index = False).first(), left_on = ['ItemNumber', 'Model plant'], right_on = ['Finished good', 'Plant'], how = 'left', indicator = True)
-        # DEMAND['in_packlines'] = DEMAND['ItemNumber'].isin(PACKLINES['Finished good'].unique())
-        # NOT_IN_PACKLINES = DEMAND.query('in_packlines == False').copy()
         NOT_IN_PACKLINES = DEMAND.query('_merge == \'left_only\'').copy()
         NOT_IN_PACKLINES = NOT_IN_PACKLINES.merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         NOT_IN_PACKLINES['Rejected Pounds'] = NOT_IN_PACKLINES['Demand quantity (pounds)'].astype(float) * NOT_IN_PACKLINES['Blend percentage'].astype(float)
-        NOT_IN_PACKLINES.rename({'OrderNumber': 'Order Number', 'ItemNumber': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
+        NOT_IN_PACKLINES.rename({'WorkOrderNumber': 'Work Order', 'ItemNumber': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
         NOT_IN_PACKLINES['Cause'] = 'Finished good has no packing rate'
-        NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Order Number', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
+        NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
         # DEMAND = DEMAND.query('in_packlines == True').copy()
         DEMAND = DEMAND.query('_merge == \'both\'').copy()
         DEMAND.drop(['Finished good', 'Plant'], axis = 1, inplace = True)
@@ -507,18 +513,18 @@ class AlphiaInputGenerator():
         DEMAND['Product Priority'].fillna('0', inplace = True)
         DEMAND = DEMAND.merge(Customer_Priority, on = 'Customer', how = 'left')
         DEMAND['Customer Priority'].fillna('0', inplace = True)
-        DEMAND['Purchase order'] = 'missing'
         DEMAND['Entity'] = 'CJFoods'
         DEMAND['Sales order'] = 'missing'
+        DEMAND['Packline'] = 'missing'
         #TODO traer el original due date cuando lo manden los de Alphia
         DEMAND['Original due date'] = pd.to_datetime(DEMAND['PlannedEnd'])
         #TODO corregir process date?
         DEMAND['Process date'] = datetime.date.today().strftime("%Y-%m-%d")
-        DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location',
-                       'OrderNumber': 'Order Number', 'Product Priority': 'Priority product', 'Customer Priority': 'Priority'}, axis = 1, inplace = True)
+        DEMAND.rename({'ItemNumber': 'Finished good', 'CustomerName': 'Customer', 'Model plant': 'Location', 'WorkOrderNumber': 'Work order',
+                       'Product Priority': 'Priority product', 'Customer Priority': 'Priority', 'PONumber': 'Purchase order'}, axis = 1, inplace = True)
         DEMAND = DEMAND[['Finished good', 'Description', 'Customer', 'Formula', 'Inventory', 'Priority product', 'Priority', 'Raw material date',
                          'Demand quantity (pounds)', 'Due date', 'Location', 'Purchase order', 'Sales order', 'Original due date',
-                         'Entity', 'Order Number', 'Process date', 'Facility']]
+                         'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
 
         ERROR_DEMAND = pd.concat([NOT_IN_BREAKOUT, NOT_IN_EXTRUDERS, NOT_IN_PACKLINES], ignore_index = True)
         ERROR_DEMAND['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
