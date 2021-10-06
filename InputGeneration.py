@@ -295,10 +295,11 @@ class AlphiaInputGenerator():
             with open('Model/Database Input/ld.log', 'w+') as last_demand_stored_log:
                 current_time = pd.to_datetime(datetime.datetime.now()).strftime("%d/%m/%y %H:%M")
                 total_demand = f"{self.DEMAND['Demand quantity (pounds)'].sum():,.2f}"
-                last_demand_stored_log.write(f"{current_time}\n{total_demand}")
+                pounds_rejected = f"{self.ERROR_DEMAND['Rejected Pounds'].sum():,.2f}"
+                last_demand_stored_log.write(f"{current_time}\n{total_demand}\n{pounds_rejected}")
             self.app.total_demand_str.set(total_demand)
             self.app.last_update_str.set(current_time)
-            self.app.rejected_pounds_str.set(f"{self.ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
+            self.app.rejected_pounds_str.set(pounds_rejected)
 
         self.display_info()
 
@@ -414,6 +415,7 @@ class AlphiaInputGenerator():
         RATES["ItemWeight"] = np.where((RATES["Measure"] == 500) & (RATES["OperationTime"].astype(float) > 0.01), "500", RATES["ItemWeight"])
         RATES.drop(['Measure', "LegacyCJFCode"], axis = 1, inplace = True)
         #---------------
+        
         #Filter by category
         RATES = RATES.query('(Area == "PACK" and CategoryCode == "FG") or (Area == "EXTR" and CategoryCode == "INT")').copy()
         RATES['OperationTimeUnits'] = RATES['OperationTimeUnits'].map({'1': '1', '2': '60'})
@@ -452,6 +454,7 @@ class AlphiaInputGenerator():
         WorkOrders = self.WorkOrders.copy()
         SalesOrders = self.SalesOrders.copy()
         ItemMaster = self.ItemMaster
+        Facility = self.Facility
         Model_WorkCenters = self.Model_WorkCenters_3
         Product_Priority = self.Product_Priority
         Customer_Priority = self.Customer_Priority
@@ -472,6 +475,11 @@ class AlphiaInputGenerator():
         DEMAND = DEMAND.astype({'PlannedQuantity': float, 'CompletedQuantity': float, 'ItemWeight': float})
         DEMAND['Demand quantity (pounds)'] = ((DEMAND['PlannedQuantity'] - DEMAND['CompletedQuantity'])*DEMAND['ItemWeight']).round(0)
         DEMAND = DEMAND[DEMAND['Demand quantity (pounds)'] > 0]
+        #Keep orders where amount is not less than 1 pallet
+        DEMAND = DEMAND.merge(Facility[['ItemNumber', 'ItemFacility', 'BalesPerPallet']], left_on = ['ItemNumber', 'Facility'], right_on = ['ItemNumber', 'ItemFacility'], how = 'left')
+        DEMAND['BalesPerPallet'].fillna(0, inplace = True)
+        DEMAND['BalesPerPallet'] = DEMAND['BalesPerPallet'].astype(float)
+        DEMAND = DEMAND[DEMAND['Demand quantity (pounds)'] >= DEMAND['ItemWeight']*DEMAND['BalesPerPallet']]
         #Filter items not in Brekaout
         DEMAND['in_breakout'] = DEMAND['ItemNumber'].isin(BREAKOUT['Finished good'].values)
         NOT_IN_BREAKOUT = DEMAND.query('in_breakout == False').copy()[['ItemNumber', 'WorkOrderNumber', 'Demand quantity (pounds)']].assign(Cause = 'Finished good not in breakout', ComponentFormula = 0).rename({'ItemNumber': 'ItemNumber FG', 'Demand quantity (pounds)': 'Rejected Pounds', 'ComponentFormula': 'ItemNumber INT', 'WorkOrderNumber': 'Work Order'}, axis = 1)
@@ -634,7 +642,7 @@ class AlphiaInputGenerator():
         df = df[['Due date', 'Demand quantity (pounds)']]
         df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
         df = df.groupby('Week start', as_index = False).sum()
-
+        self.app.ax.clear()
         plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
                       estimator = sum, ci = None, ax = self.app.ax)
         self.app.ax.xaxis_date()

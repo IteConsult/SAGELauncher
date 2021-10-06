@@ -1,4 +1,4 @@
-debug = False
+debug = True
 
 #Standard libraries imports
 import tkinter as tk
@@ -108,9 +108,10 @@ def show_demand_info():
     elif app.connection_mode.get() == 'Excel':
         try:
             with open('Model/Database Input/ld.log', 'r') as last_demand_info_log:
-                last_time, total_demand = last_demand_info_log.readlines()
+                last_time, total_demand, pounds_rejected = last_demand_info_log.readlines()
                 app.last_update_str.set(last_time.strip())
                 app.total_demand_str.set(total_demand.strip())
+                app.rejected_pounds_str.set(pounds_rejected.strip())
         except Exception as e:
             print('Could not retrieve Demand data: ' + traceback.format_exc())
             # app.statusbar.config(text = 'Could not connect to cloud database.')
@@ -130,6 +131,7 @@ def show_demand_info():
     #Display info
     df['Due date'] = pd.to_datetime(df['Due date'])
     df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
+    app.ax.clear()
     df = df[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
     app.plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
                   estimator = sum, ci = None, ax = app.ax)
