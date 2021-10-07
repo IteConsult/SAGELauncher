@@ -1,4 +1,4 @@
-debug = True
+debug = False
 
 #Standard libraries imports
 import tkinter as tk
@@ -176,7 +176,7 @@ def run_experiment_cmd(experiment):
     
 def run_experiment(experiment):
     try:
-        subprocess.run(f'Model\AlphiaVisual_windows-{experiment}.bat ' + app.connection_mode.get().replace(" ", ""))
+        subprocess.run(f'Model\DetSchedOpt_windows-{experiment}.bat ' + app.connection_mode.get().replace(" ", ""))
     except Exception as e:
         app.show_error(e, message = f"Could not run {experiment} experiment.")
     
