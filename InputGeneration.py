@@ -419,9 +419,9 @@ class AlphiaInputGenerator():
         #Filter by category
         RATES = RATES.query('(Area == "PACK" and CategoryCode == "FG") or (Area == "EXTR" and CategoryCode == "INT")').copy()
         RATES['OperationTimeUnits'] = RATES['OperationTimeUnits'].map({'1': '1', '2': '60'})
-        RATES = RATES.astype({'BaseQuantity': float, 'ItemWeight': float, 'OperationTimeUnits': int, 'OperationTime': float})
+        RATES = RATES.astype({'BaseQuantity': float, 'ItemWeight': float, 'OperationTimeUnits': int, 'OperationTime': float, 'UnitsPerHour': float})
         calculated_rate = RATES['BaseQuantity']*RATES['ItemWeight']/(RATES['OperationTimeUnits']*RATES['OperationTime'])
-        RATES['Pounds/hour'] = np.where(~calculated_rate.isna() & calculated_rate != 0, calculated_rate, RATES['UnitsPerHour'])
+        RATES['Pounds/hour'] = np.where(~calculated_rate.isna() & calculated_rate != 0, calculated_rate, RATES['UnitsPerHour']*RATES['ItemWeight'])
         #Drop those for which the calculation failed (usually because weight is missing)
         RATES.dropna(subset=['Pounds/hour'], inplace = True)
         #Drop columns that won't be needed anymore
@@ -599,7 +599,6 @@ class AlphiaInputGenerator():
                                                       on='ItemNumber',
                                                       how = 'inner')
         #filter based on two conditions
-        print(merge)
         merge = merge[
                       ((merge["CategoryCode"]=="INT") & (merge["Operation"]=='20')) | 
                       ((merge["CategoryCode"]=='FG') & (merge["Operation"]=='10'))
