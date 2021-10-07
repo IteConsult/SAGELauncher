@@ -78,7 +78,7 @@ class AlphiaInputGenerator():
 
             #Read manual files from HANA
             #TODO pasar a diccionario con valores la lista de columnas
-            manual_files = ['Model_WorkCenters_3', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families', 'Extruders_Schedule']
+            manual_files = ['Model_WorkCenters', 'Model_WorkCenters_3', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families', 'Extruders_Schedule']
             
             if self.app.connection_mode.get() == 'SAP HANA Cloud':
                 with self.app.connectToHANA() as connection:
@@ -456,6 +456,10 @@ class AlphiaInputGenerator():
         ItemMaster = self.ItemMaster
         Facility = self.Facility
         Model_WorkCenters = self.Model_WorkCenters_3
+        
+        #TODO mejorar:
+        PC_WorkCenters = self.Model_WorkCenters
+        
         Product_Priority = self.Product_Priority
         Customer_Priority = self.Customer_Priority
         BREAKOUT = self.BREAKOUT
@@ -506,9 +510,28 @@ class AlphiaInputGenerator():
         NOT_IN_PACKLINES.rename({'WorkOrderNumber': 'Work Order', 'ItemNumber': 'ItemNumber FG', 'Component formula': 'ItemNumber INT'}, axis = 1, inplace = True)
         NOT_IN_PACKLINES['Cause'] = 'Finished good has no packing rate'
         NOT_IN_PACKLINES = NOT_IN_PACKLINES[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
-        # DEMAND = DEMAND.query('in_packlines == True').copy()
         DEMAND = DEMAND.query('_merge == \'both\'').copy()
         DEMAND.drop(['Finished good', 'Plant'], axis = 1, inplace = True)
+        
+        #Particular logic for PC: only keep demand where both extrusion and packing can be made in the same side of the facility
+        pc_fgs = DEMAND[DEMAND['Facility'] == '20005']['ItemNumber'].unique()
+        aux_df = BREAKOUT[BREAKOUT['Finished good'].isin(pc_fgs)][['Finished good', 'Component formula']].merge(EXTRUDERS[['Component formula', 'Code']].merge(PC_WorkCenters[['WorkCenter', 'Model plant']], left_on = 'Code', right_on = 'WorkCenter', how = 'left').drop(['Code', 'WorkCenter'], axis = 1).groupby('Component formula', as_index = False).agg(lambda x: list(x)), on = 'Component formula', how = 'left')
+        aux_df['can_be_extruded_in_pc10'] = aux_df['Model plant'].apply(lambda x: True if 'PC10' in x else False)
+        aux_df['can_be_extruded_in_pc30'] = aux_df['Model plant'].apply(lambda x: True if 'Pc30' in x else False)
+        aux_df = aux_df.drop(['Component formula', 'Model plant'], axis = 1).groupby('Finished good', as_index = False).all()
+        #aux_df.columns = ['Finished good', 'can_be_extruded_in_pc10', 'can_be_extruded_in_pc30']
+        aux_df = aux_df.merge(PACKLINES[['Finished good', 'Code']].merge(PC_WorkCenters[['WorkCenter', 'Model plant']], left_on = 'Code', right_on = 'WorkCenter', how = 'left').drop(['Code', 'WorkCenter'], axis = 1).groupby('Finished good', as_index = False).agg(lambda x: list(x)), on = 'Finished good', how = 'left')
+        aux_df['can_be_packed_in_pc10'] = aux_df['Model plant'].apply(lambda x: True if 'PC10' in x else False)
+        aux_df['can_be_packed_in_pc30'] = aux_df['Model plant'].apply(lambda x: True if 'PC30' in x else False)
+        aux_df = aux_df.groupby('Finished good', as_index = False).agg({'can_be_extruded_in_pc10': 'any', 'can_be_extruded_in_pc30': 'any', 'can_be_packed_in_pc10': 'all', 'can_be_packed_in_pc30': 'all'})
+        aux_df['is_able'] = (aux_df['can_be_extruded_in_pc10'] & aux_df['can_be_packed_in_pc10']) | (aux_df['can_be_extruded_in_pc30'] & aux_df['can_be_packed_in_pc30'])
+        DEMAND = DEMAND.merge(aux_df[['Finished good', 'is_able']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left').drop('Finished good', axis = 1)
+        DEMAND['is_able'] = DEMAND['is_able'].fillna(False)
+        PC_FILTER = DEMAND[(DEMAND['Facility'] == '20005') & (~DEMAND['is_able'])]
+        PC_FILTER.to_csv('pc_filter.csv')
+        DEMAND = DEMAND[(DEMAND['Facility'] != '20005') | (DEMAND['is_able'])]
+
+        
         #TODO traer el Customer cuando lo manden los de Alphia
         DEMAND['Customer'] = '0'
         #TODO traer la Formula cuando la manden los de Alphia
