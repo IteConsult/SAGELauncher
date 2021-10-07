@@ -430,7 +430,7 @@ class AlphiaInputGenerator():
         PACKLINES = RATES.query('Area == "PACK"').drop(['Area', 'CategoryCode'], axis = 1)
         EXTRUDERS = RATES.query('Area == "EXTR"').drop(['Area', 'CategoryCode'], axis = 1)
         #Add Facility code column to Packlines table
-        PACKLINES['Facility code'] = PACKLINES['Model plant'].map({'PC10': '20005', 'PC30': '20005', 'Bern': '20001', 'BAXTER SP': '20006'})
+        PACKLINES['Facility code'] = PACKLINES['Model plant'].map({'PC': '20005', 'Bern': '20001', 'BAXTER SP': '20006'})
         #Add Shrinkage column to EXTRUDERS table
         EXTRUDERS['Shrinkage'] = 0.001
         #Bring MinRunSize column from Facility table
