@@ -277,6 +277,8 @@ class AlphiaInputGenerator():
                 'PACKLINES': ('Model/Database Input/Packlines.xlsx', 'Packlines'),
                 'EXTRUDERS': ('Model/Database Input/Extruders.xlsx', 'Extruders'),
                 'ERROR_DEMAND': ('Model/Database Input/Error_Demand.xlsx', 'Error Demand'),}
+            if not os.path.exists('Model/Database Input'):
+                os.mkdir('Model/Database Input') 
             for table in dic:
                 try:
                     getattr(self, table).to_excel(dic[table][0], sheet_name = dic[table][1], index = False)
@@ -292,14 +294,20 @@ class AlphiaInputGenerator():
             except Exception as e:
                 print('Couldn\'t save to Excel: ' + traceback.format_exc())
                 self.app.register_error('Couldn\'t save to Excel.', e)
-            with open('Model/Database Input/ld.log', 'w+') as last_demand_stored_log:
-                current_time = pd.to_datetime(datetime.datetime.now()).strftime("%d/%m/%y %H:%M")
-                total_demand = f"{self.DEMAND['Demand quantity (pounds)'].sum():,.2f}"
-                pounds_rejected = f"{self.ERROR_DEMAND['Rejected Pounds'].sum():,.2f}"
-                last_demand_stored_log.write(f"{current_time}\n{total_demand}\n{pounds_rejected}")
-            self.app.total_demand_str.set(total_demand)
-            self.app.last_update_str.set(current_time)
-            self.app.rejected_pounds_str.set(pounds_rejected)
+            try:
+                with open('Model/Database Input/ld.log', 'w+') as last_demand_stored_log:
+                    current_time = pd.to_datetime(datetime.datetime.now()).strftime("%d/%m/%y %H:%M")
+                    total_demand = f"{self.DEMAND['Demand quantity (pounds)'].sum():,.2f}"
+                    pounds_rejected = f"{self.ERROR_DEMAND['Rejected Pounds'].sum():,.2f}"
+                    last_demand_stored_log.write(f"{current_time}\n{total_demand}\n{pounds_rejected}")
+                self.app.total_demand_str.set(total_demand)
+                self.app.last_update_str.set(current_time)
+                self.app.rejected_pounds_str.set(pounds_rejected)
+            except:
+                print('Could not open ld.log')
+                self.app.total_demand_str.set('Could not retrieve information.')
+                self.app.last_update_str.set('Could not retrieve information.')
+                self.app.rejected_pounds_str.set('Could not retrieve information.')
 
         self.display_info()
 
@@ -337,13 +345,14 @@ class AlphiaInputGenerator():
         BREAKOUT['Quantity'] = BREAKOUT['Quantity'].astype(float)
         BREAKOUT = BREAKOUT[['ItemNumber', 'Facility', 'BomCode', 'Quantity']].groupby(['ItemNumber', 'Facility', 'BomCode']).sum().rename({'Quantity': 'BlendPercentage'}, axis = 1).query('BlendPercentage != 0').merge(BREAKOUT, left_index = True, right_on = ['ItemNumber', 'Facility', 'BomCode'], how = 'right')
         BREAKOUT['BlendPercentage'] = BREAKOUT['Quantity']/BREAKOUT['BlendPercentage']
-        
+
+        #Fix blends so that they add up to 1
+
         def fixBlends(s):
             if s.shape[0] > 2:
                 s.iloc[-1] = 1 - s.iloc[:-1].sum()
             return s
         
-        #Fix blends so that they add up to 1
         BREAKOUT['BlendPercentage'] = BREAKOUT[['ItemNumber', 'Facility', 'BomCode', 'BlendPercentage']].groupby(['ItemNumber', 'Facility', 'BomCode']).transform(fixBlends)
         #Weight is BagSize
         BREAKOUT.rename({'BagWeight': 'Weight'}, axis = 1, inplace = True)
@@ -527,8 +536,12 @@ class AlphiaInputGenerator():
         aux_df['is_able'] = (aux_df['can_be_extruded_in_pc10'] & aux_df['can_be_packed_in_pc10']) | (aux_df['can_be_extruded_in_pc30'] & aux_df['can_be_packed_in_pc30'])
         DEMAND = DEMAND.merge(aux_df[['Finished good', 'is_able']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left').drop('Finished good', axis = 1)
         DEMAND['is_able'] = DEMAND['is_able'].fillna(False)
-        PC_FILTER = DEMAND[(DEMAND['Facility'] == '20005') & (~DEMAND['is_able'])]
-        PC_FILTER.to_csv('pc_filter.csv')
+        PC_FILTER = DEMAND[(DEMAND['Facility'] == '20005') & (~DEMAND['is_able'])].copy()
+        # PC_FILTER.to_csv('pc_filter.csv')
+        PC_FILTER.rename({'ItemNumber': 'ItemNumber FG', 'WorkOrderNumber': 'Work Order', 'Demand quantity (pounds)': 'Rejected Pounds'}, inplace = True, axis = 1)
+        PC_FILTER['ItemNumber INT'] = 0
+        PC_FILTER['Cause'] = 'Packing and extrusion rates in different sections of PC plant'
+        PC_FILTER = PC_FILTER[['ItemNumber FG', 'Work Order', 'Cause', 'ItemNumber INT', 'Rejected Pounds']]
         DEMAND = DEMAND[(DEMAND['Facility'] != '20005') | (DEMAND['is_able'])]
 
         
@@ -557,7 +570,7 @@ class AlphiaInputGenerator():
                          'Demand quantity (pounds)', 'Due date', 'Location', 'Purchase order', 'Sales order', 'Original due date',
                          'Entity', 'Work order', 'Packline', 'Process date', 'Facility']]
 
-        ERROR_DEMAND = pd.concat([NOT_IN_BREAKOUT, NOT_IN_EXTRUDERS, NOT_IN_PACKLINES], ignore_index = True)
+        ERROR_DEMAND = pd.concat([NOT_IN_BREAKOUT, NOT_IN_EXTRUDERS, NOT_IN_PACKLINES, PC_FILTER], ignore_index = True)
         ERROR_DEMAND['Process Date'] = datetime.date.today().strftime("%Y-%m-%d")
         ERROR_DEMAND['Run'] = 1
 
@@ -602,6 +615,7 @@ class AlphiaInputGenerator():
     def generate_wo_demand(self):
         ItemMaster = self.ItemMaster
         WorkOrders = self.WorkOrders
+        SalesOrders = self.SalesOrders
     
         #Create a copy
         ItemMaster_copy = ItemMaster.copy()

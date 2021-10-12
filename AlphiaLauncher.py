@@ -104,7 +104,10 @@ def show_demand_info():
             print('Could not connect to cloud database: ' + traceback.format_exc())
             # app.statusbar.config(text = 'Could not connect to cloud database.')
             app.last_update_str.set('Could not retrieve information.')
-            app.total_demand_str.set('Could not retrieve information.')        
+            app.total_demand_str.set('Could not retrieve information.')    
+            app.rejected_pounds_str.set('Could not retrieve information.')
+            app.statusbar.config(text = '')
+            return
     elif app.connection_mode.get() == 'Excel':
         try:
             with open('Model/Database Input/ld.log', 'r') as last_demand_info_log:
@@ -114,9 +117,10 @@ def show_demand_info():
                 app.rejected_pounds_str.set(pounds_rejected.strip())
         except Exception as e:
             print('Could not retrieve Demand data: ' + traceback.format_exc())
-            # app.statusbar.config(text = 'Could not connect to cloud database.')
-            app.last_update_str.set('Couldn\'t retrieve information.')
-            app.total_demand_str.set('Couldn\'t retrieve information.')  
+            app.statusbar.config(text = '')
+            app.last_update_str.set('Could not retrieve information.')
+            app.total_demand_str.set('Could not retrieve information.') 
+            app.rejected_pounds_str.set('Could not retrieve information.')
         try:
             #Reading Error Demand table
             ERROR_DEMAND = pd.read_excel('Model/Database Input/Error_Demand.xlsx').astype(str)

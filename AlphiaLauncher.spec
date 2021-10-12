@@ -1,11 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 block_cipher = None
 
 
 a = Analysis(['AlphiaLauncher.py'],
-             pathex=['C:\\Users\\egabr\\OneDrive\\Documents\\GitHub\\SAGELauncher'],
+             pathex=['C:\\Users\\admin\\Documents\\GitHub\\SAGELauncher'],
              binaries=[],
              datas=[],
              hiddenimports=[],
