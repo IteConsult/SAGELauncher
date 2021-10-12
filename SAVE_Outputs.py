@@ -322,7 +322,7 @@ def wo_demand(itemmaster,workorders, extruders_df):
     
     #rename columns
     WorkOrders_copy.rename(columns= {'Facility':'Facility Code',
-                                     'Purchase_Order':'Purchase Order',
+                                     'PoNumber':'Purchase Order',
                                      'WorkCenter':'WorkCenter Code'} ,inplace=True)
 
     #merge dataframes
