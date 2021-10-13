@@ -526,7 +526,7 @@ class AlphiaInputGenerator():
         pc_fgs = DEMAND[DEMAND['Facility'] == '20005']['ItemNumber'].unique()
         aux_df = BREAKOUT[BREAKOUT['Finished good'].isin(pc_fgs)][['Finished good', 'Component formula']].merge(EXTRUDERS[['Component formula', 'Code']].merge(PC_WorkCenters[['WorkCenter', 'Model plant']], left_on = 'Code', right_on = 'WorkCenter', how = 'left').drop(['Code', 'WorkCenter'], axis = 1).groupby('Component formula', as_index = False).agg(lambda x: list(x)), on = 'Component formula', how = 'left')
         aux_df['can_be_extruded_in_pc10'] = aux_df['Model plant'].apply(lambda x: True if 'PC10' in x else False)
-        aux_df['can_be_extruded_in_pc30'] = aux_df['Model plant'].apply(lambda x: True if 'Pc30' in x else False)
+        aux_df['can_be_extruded_in_pc30'] = aux_df['Model plant'].apply(lambda x: True if 'PC30' in x else False)
         aux_df = aux_df.drop(['Component formula', 'Model plant'], axis = 1).groupby('Finished good', as_index = False).all()
         #aux_df.columns = ['Finished good', 'can_be_extruded_in_pc10', 'can_be_extruded_in_pc30']
         aux_df = aux_df.merge(PACKLINES[['Finished good', 'Code']].merge(PC_WorkCenters[['WorkCenter', 'Model plant']], left_on = 'Code', right_on = 'WorkCenter', how = 'left').drop(['Code', 'WorkCenter'], axis = 1).groupby('Finished good', as_index = False).agg(lambda x: list(x)), on = 'Finished good', how = 'left')
