@@ -4,8 +4,7 @@ import sqlalchemy_hana
 import sqlalchemy_hana.dialect
 import datetime
 import numpy as np
-
-to_excel = False
+import os
 
 sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
@@ -537,7 +536,7 @@ def assigned_wo(group_extruders_df, wo_demand_df):
 
 #sube la lista de tablas de SACA a Hana y pisa segun week y run
 
-def upload_output_to_hana():
+def upload_output_to_hana(to_excel = False):
     
     #coneccion a variable
     connection_to_HANA = connectToHANA()
@@ -569,39 +568,45 @@ def upload_output_to_hana():
     assigned_wo_df = assigned_wo(group_extruders_df, wo_demand_df)
     
     if to_excel:
-        extruders_df.to_excel('SAC_Output/extruders.xlsx', index = False)
-        packlines_df.to_excel('SAC_Output/packlines.xlsx', index = False)
-        unpacked_df.to_excel('SAC_Output/unpacked.xlsx', index = False)
-        inventory_df.to_excel('SAC_Output/inventory.xlsx', index = False)
-        wo_demand_df.to_excel('SAC_Output/wo_demand.xlsx', index = False)
-        unified_sac_df.to_excel('SAC_Output/unified_sac.xlsx', index = False)
-        group_extruders_df.to_excel('SAC_Output/group_extruders.xlsx', index = False)
-        assigned_wo_df.to_excel('SAC_Output/assigned_wo.xlsx', index = False)
+        if not os.path.exists('SAC_Output'):
+            os.mkdir('SAC_Output')   
+        if not os.path.exists('SAC_Output/Models'):
+            os.mkdir('SAC_Output/Models')          
+        extruders_df.to_excel(f'SAC_Output/extruders.xlsx', index = False)
+        packlines_df.to_excel(f'SAC_Output/packlines.xlsx', index = False)
+        unpacked_df.to_excel(f'SAC_Output/unpacked.xlsx', index = False)
+        inventory_df.to_excel(f'SAC_Output/inventory.xlsx', index = False)
+        wo_demand_df.to_excel(f'SAC_Output/Models/{wo_demand_df.name}.xlsx', index = False)
+        unified_sac_df.to_excel(f'SAC_Output/Models/{unified_sac_df.name}.xlsx', index = False)
+        group_extruders_df.to_excel(f'SAC_Output/group_extruders.xlsx', index = False)
+        assigned_wo_df.to_excel(f'SAC_Output/Models/{assigned_wo_df.name}.xlsx', index = False)
+        unified_sac2_df.to_excel(f'SAC_Output/Models/{unified_sac2_df.name}.xlsx', index = False)
 
     lista_tablas_para_SAC = [assigned_wo_df, unified_sac_df, wo_demand_df, unified_sac2_df]
     
     #itera sobre las tablas, pisa segun run y process date. Si no funciona, dale error
-    for table in lista_tablas_para_SAC:
-        try:
+    if not to_excel:
+        for table in lista_tablas_para_SAC:
+            try:
 
-            #variables de run y process date
-            # Run = table.loc[1,"Run"]
-            Run = table["Run"].iloc[0]
-            # Process_Date = table.loc[1,"Process Date"]
-            Process_Date = table["Process Date"].iloc[0]
+                #variables de run y process date
+                # Run = table.loc[1,"Run"]
+                Run = table["Run"].iloc[0]
+                # Process_Date = table.loc[1,"Process Date"]
+                Process_Date = table["Process Date"].iloc[0]
 
-            #execute sql to delete rows on database based on run and process date
-            connection_to_HANA.execute(f"""DELETE FROM "SAC_OUTPUT".{table.name} WHERE "Process Date" = '{Process_Date}' and "Run" = '{Run}'""")
-            print('Values deleted succesfully')
+                #execute sql to delete rows on database based on run and process date
+                connection_to_HANA.execute(f"""DELETE FROM "SAC_OUTPUT".{table.name} WHERE "Process Date" = '{Process_Date}' and "Run" = '{Run}'""")
+                print('Values deleted succesfully')
 
-            #append dataframe to the table
-            table.to_sql(table.name.lower(), schema='SAC_OUTPUT', con=connection_to_HANA, if_exists='append', index=False)
-            print(table.name + ' uploaded succesfully')
+                #append dataframe to the table
+                table.to_sql(table.name.lower(), schema='SAC_OUTPUT', con=connection_to_HANA, if_exists='append', index=False)
+                print(table.name + ' uploaded succesfully')
 
-        except Exception as e:
+            except Exception as e:
 
-            #print problems
-            print(table.name +' failed to upload! ' + str(e))
+                #print problems
+                print(table.name +' failed to upload! ' + str(e))
 
 if __name__ == '__main__':
     upload_output_to_hana()
