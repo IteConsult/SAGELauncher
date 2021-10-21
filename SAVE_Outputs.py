@@ -467,6 +467,8 @@ def group_extruders(extruders_df, inventory_df):
     #drop index column
     merge.drop(['index'], axis=1, inplace = True)
     
+    merge.name = 'GROUPED_EXTRUDERS'
+    
     #return df
     return merge
 
@@ -582,7 +584,7 @@ def upload_output_to_hana(to_excel = False):
         assigned_wo_df.to_excel(f'SAC_Output/Models/{assigned_wo_df.name}.xlsx', index = False)
         unified_sac2_df.to_excel(f'SAC_Output/Models/{unified_sac2_df.name}.xlsx', index = False)
 
-    lista_tablas_para_SAC = [assigned_wo_df, unified_sac_df, wo_demand_df, unified_sac2_df]
+    lista_tablas_para_SAC = [assigned_wo_df, unified_sac_df, wo_demand_df, unified_sac2_df, group_extruders_df]
     
     #itera sobre las tablas, pisa segun run y process date. Si no funciona, dale error
     if not to_excel:
