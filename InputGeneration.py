@@ -258,10 +258,13 @@ class AlphiaInputGenerator():
                     
                 #8) Save upload time info
                 try:
-                    connection.execute(f'DELETE FROM "{SAGE_TABLES_SCHEMA}"."LOG"')
+                    # connection.execute(f'DELETE FROM "{SAGE_TABLES_SCHEMA}"."LOG"')
+                    connection.execute(f'DELETE FROM "{SAGE_TABLES_SCHEMA}"."LOG2"')
                     current_time = pd.to_datetime(datetime.datetime.now())
                     total_demand = self.DEMAND['Demand quantity (pounds)'].sum()
-                    pd.DataFrame({'TIME': [current_time], 'TOTAL_DEMAND': [round(total_demand,2)]}).to_sql('log', schema = SAGE_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
+                    rejected_pounds = self.ERROR_DEMAND['Rejected Pounds'].sum()
+                    # pd.DataFrame({'TIME': [current_time], 'TOTAL_DEMAND': [round(total_demand,2)]}).to_sql('log', schema = SAGE_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
+                    pd.DataFrame({'TIME': [current_time], 'TOTAL_DEMAND': [round(total_demand,2)], 'REJECTED_POUNDS': [round(rejected_pounds,2)]}).to_sql('log2', schema = SAGE_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Updated backup time successfully.')
                     self.app.total_demand_str.set(f"{total_demand:,.2f}")
                     self.app.last_update_str.set(current_time.strftime("%d/%m/%y %H:%M"))
@@ -323,14 +326,14 @@ class AlphiaInputGenerator():
     
         BOM['Quantity'] = BOM['Quantity'].astype(float)
         #Merging with ItemMaster
-        BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].groupby(['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber'], as_index = False).sum().merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').min(), on = 'ItemNumber', how = 'left', validate = 'm:1')
+        BREAKOUT = BOM[['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber', 'Quantity']].groupby(['ItemNumber', 'Facility', 'BomCode', 'ComponentItemNumber'], as_index = False).sum().merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ProductType', 'DefaultFacility', 'ItemWeight', 'BagWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left', validate = 'm:1')
         BREAKOUT.dropna(subset = ['ItemWeight', 'BagWeight'], inplace = True)
         #Keep FG items only
         BREAKOUT = BREAKOUT.query('CategoryCode == "FG"').drop('CategoryCode', axis = 1)
         #Try to keep BOM from DefaultFacility if possible
         AVAILABLE_PLANTS = BREAKOUT[['ItemNumber', 'Facility', 'DefaultFacility']].drop_duplicates()
         AVAILABLE_PLANTS['has_default_facility'] = np.where(AVAILABLE_PLANTS['Facility'] == AVAILABLE_PLANTS['DefaultFacility'], True, False)
-        AVAILABLE_PLANTS = AVAILABLE_PLANTS.groupby('ItemNumber', as_index = False).agg({'Facility': 'min', 'DefaultFacility': 'min', 'has_default_facility': 'any'})
+        AVAILABLE_PLANTS = AVAILABLE_PLANTS.groupby('ItemNumber', as_index = False).agg({'Facility': 'first', 'DefaultFacility': 'first', 'has_default_facility': 'any'})
         AVAILABLE_PLANTS['BOMFacility'] = np.where(AVAILABLE_PLANTS['has_default_facility'], AVAILABLE_PLANTS['DefaultFacility'], AVAILABLE_PLANTS['Facility'])
         BREAKOUT = BREAKOUT.merge(AVAILABLE_PLANTS[['ItemNumber', 'BOMFacility']], on = 'ItemNumber', how = 'left')
         BREAKOUT = BREAKOUT.query('Facility == BOMFacility')
@@ -339,7 +342,7 @@ class AlphiaInputGenerator():
         bom_filter = BREAKOUT['BomCode'] == BREAKOUT['Facility'].map(bomcode_table)
         BREAKOUT = BREAKOUT[bom_filter]
         #Second merging with ItemMaster to keep only 'INT' category component items
-        BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'CategoryCode']].groupby('ItemNumber').min(), left_on = 'ComponentItemNumber', right_on = 'ItemNumber', suffixes = ['','_y'])
+        BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'CategoryCode']].groupby('ItemNumber').first(), left_on = 'ComponentItemNumber', right_on = 'ItemNumber', suffixes = ['','_y'])
         BREAKOUT = BREAKOUT.query('CategoryCode == "INT"').drop('CategoryCode', axis = 1)
         #Blend percentage calculation
         BREAKOUT['Quantity'] = BREAKOUT['Quantity'].astype(float)
@@ -368,7 +371,7 @@ class AlphiaInputGenerator():
         BREAKOUT['Dry-Liquid-Digest Concat'] = '0 - 0'
         BREAKOUT['Max Run Size (lb)'] = 0
         #TODO Provisorio (después va a estar en el Extruders cuando se acople el modelo)
-        BREAKOUT = BREAKOUT.merge(Facility[['ItemNumber', 'FormulaMinRunSize']].groupby('ItemNumber').min(), on = 'ItemNumber', how = 'left')
+        BREAKOUT = BREAKOUT.merge(Facility[['ItemNumber', 'FormulaMinRunSize']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
         BREAKOUT['FormulaMinRunSize'] = BREAKOUT['FormulaMinRunSize'].astype(float).fillna(0)
         #Set column order
         BREAKOUT = BREAKOUT[['ItemNumber', 'Family', 'ComponentItemNumber', 'color', 'shape', 'ProductType', 'Type-Shape-Size Concat', 'Dry-Liquid-Digest Concat',
@@ -376,7 +379,7 @@ class AlphiaInputGenerator():
         #Change column names
         BREAKOUT.rename({'ItemNumber': 'Finished good', 'ComponentItemNumber': 'Component formula', 'ProductType': 'Category', 'BlendPercentage': 'Blend percentage', 'FormulaMinRunSize': 'Minimum run size'}, axis = 1, inplace = True)
         #TODO PROVISORIO Esto es para traer el type desde JDE
-        BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'LegacyCJFCode']].groupby('ItemNumber').min(), left_on = 'Component formula', right_on = 'ItemNumber', how = 'left')
+        BREAKOUT = BREAKOUT.merge(ItemMaster[['ItemNumber', 'LegacyCJFCode']].groupby('ItemNumber').first(), left_on = 'Component formula', right_on = 'ItemNumber', how = 'left')
         BREAKOUT = BREAKOUT.merge(MD_Bulk_Code[['id', 'Type']], left_on = 'LegacyCJFCode', right_on = 'id', how = 'left')
         BREAKOUT['Category'] = BREAKOUT['Type'].copy().fillna('0').apply(lambda x: x.upper())
         BREAKOUT['Type-Shape-Size Concat'] = BREAKOUT['Type'].copy()
@@ -386,7 +389,7 @@ class AlphiaInputGenerator():
         #JDE_FG = pd.read_csv("Finished_Good.csv", header=0, index_col=False, keep_default_na=True)
         Finished_Good = Finished_Good[(Finished_Good.Account == "lb/Unit") & (Finished_Good.Measure == 500)]
         Finished_Good = Finished_Good[["Item_Code", "Measure"]]
-        BREAKOUT = BREAKOUT.merge(ItemMaster[["ItemNumber", "LegacyCJFCode"]].groupby("ItemNumber").min(), left_on = "Finished good", right_on = "ItemNumber", how = "left")
+        BREAKOUT = BREAKOUT.merge(ItemMaster[["ItemNumber", "LegacyCJFCode"]].groupby("ItemNumber").first(), left_on = "Finished good", right_on = "ItemNumber", how = "left")
         BREAKOUT = BREAKOUT.merge(Finished_Good, left_on = "LegacyCJFCode", right_on = "Item_Code", how = "left")
         BREAKOUT["Weight"] = np.where(BREAKOUT["Measure"] == 500, "500", BREAKOUT["Weight"])
         BREAKOUT.drop(['id', 'Type', 'Item_Code', 'Measure', "LegacyCJFCode"], axis = 1, inplace = True)
@@ -413,10 +416,10 @@ class AlphiaInputGenerator():
         #Keep only those which are either packlines or extruders
         RATES = RATES.query('Area == "PACK" or Area == "EXTR"')
         #Merging with ItemMaster
-        RATES = RATES.merge(ItemMaster[['ItemNumber', 'ItemWeight', 'CategoryCode']].groupby('ItemNumber').min(), on = 'ItemNumber', how = 'inner')
+        RATES = RATES.merge(ItemMaster[['ItemNumber', 'ItemWeight', 'CategoryCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'inner')
 
         #TODO provisorio ---------------
-        RATES = RATES.merge(ItemMaster[['ItemNumber', 'LegacyCJFCode']].groupby('ItemNumber').min(), on = 'ItemNumber', how = 'left')
+        RATES = RATES.merge(ItemMaster[['ItemNumber', 'LegacyCJFCode']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
         #JDE_FG = pd.read_csv("Finished_Good.csv", header=0, index_col=False, keep_default_na=True)
         Finished_Good = Finished_Good[(Finished_Good.Account == "lb/Unit") & (Finished_Good.Measure == 500)]
         Finished_Good = Finished_Good[["Item_Code", "Measure"]]
@@ -482,7 +485,7 @@ class AlphiaInputGenerator():
         #Get WorkOrders where possible, then SalesOrders
         DEMAND = pd.concat([WorkOrders, SalesOrders.merge(WorkOrders[['ItemNumber', 'PONumber']], on = ['ItemNumber', 'PONumber'], how = 'left', indicator = True).query('_merge == \'left_only\'').drop('_merge', axis = 1)], ignore_index = True)
         #Filter only FG items
-        DEMAND = DEMAND.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').min(), on = 'ItemNumber', how = 'left')
+        DEMAND = DEMAND.merge(ItemMaster[['ItemNumber', 'Description', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
         DEMAND = DEMAND.query('CategoryCode == "FG"')
         #Calculate demand in pounds and keep those with positive demand
         DEMAND = DEMAND.astype({'PlannedQuantity': float, 'CompletedQuantity': float, 'ItemWeight': float})
@@ -512,7 +515,7 @@ class AlphiaInputGenerator():
         #Bring Model plant column
         DEMAND = DEMAND.merge(Model_WorkCenters[['Facility', 'Model plant']].drop_duplicates(), on = 'Facility', how = 'left')
         #Keep only FG with packing rate in plant
-        DEMAND = DEMAND.merge(PACKLINES[['Finished good', 'Plant']].groupby(['Finished good', 'Plant'], as_index = False).min(), left_on = ['ItemNumber', 'Model plant'], right_on = ['Finished good', 'Plant'], how = 'left', indicator = True)
+        DEMAND = DEMAND.merge(PACKLINES[['Finished good', 'Plant']].groupby(['Finished good', 'Plant'], as_index = False).first(), left_on = ['ItemNumber', 'Model plant'], right_on = ['Finished good', 'Plant'], how = 'left', indicator = True)
         NOT_IN_PACKLINES = DEMAND.query('_merge == \'left_only\'').copy()
         NOT_IN_PACKLINES = NOT_IN_PACKLINES.merge(BREAKOUT[['Finished good', 'Component formula', 'Blend percentage']], left_on = 'ItemNumber', right_on = 'Finished good', how = 'left')
         NOT_IN_PACKLINES['Rejected Pounds'] = NOT_IN_PACKLINES['Demand quantity (pounds)'].astype(float) * NOT_IN_PACKLINES['Blend percentage'].astype(float)
@@ -589,7 +592,7 @@ class AlphiaInputGenerator():
         #Keep only Facilities that exist in the AnyLogic model
         facilities_filter = INVENTORY_BULK['Facility'].isin(Model_WorkCenters['Facility'])
         INVENTORY_BULK = INVENTORY_BULK[facilities_filter]
-        INVENTORY_BULK = INVENTORY_BULK.merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').min(), on = 'ItemNumber', how = 'left')
+        INVENTORY_BULK = INVENTORY_BULK.merge(ItemMaster[['ItemNumber', 'CategoryCode', 'ItemWeight']].groupby('ItemNumber').first(), on = 'ItemNumber', how = 'left')
         INVENTORY_BULK.query('CategoryCode == "INT"', inplace = True)
         INVENTORY_BULK.dropna(subset = ['ItemWeight'], inplace = True)
         INVENTORY_BULK['Quantity'] = INVENTORY_BULK['StockQuantity'].astype(float) * INVENTORY_BULK['ItemWeight'].astype(float)
@@ -632,7 +635,7 @@ class AlphiaInputGenerator():
         merge = WorkOrders_copy.merge(ItemMaster_copy[['ItemNumber', 
                                                        'CategoryCode',
                                                        'ItemWeight'
-                                                       ]].groupby('ItemNumber').min(), 
+                                                       ]].groupby('ItemNumber').first(), 
                                                       on='ItemNumber',
                                                       how = 'inner')
         #filter based on two conditions

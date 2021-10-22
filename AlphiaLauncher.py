@@ -91,12 +91,14 @@ def show_demand_info():
             app.rejected_pounds_str.set('Retrieving data...')
             with app.connectToHANA() as connection:
                 #Bring time of last update
-                last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
+                # last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
+                last_time, total_demand, rejected_pounds = connection.execute('SELECT * FROM "SAGE"."LOG2"').first()
                 app.last_update_str.set(last_time.strftime("%m/%d/%y %H:%M"))
                 app.total_demand_str.set(f'{round(total_demand, 2):,}')
-                #Reading Error Demand table
-                ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
-                app.rejected_pounds_str.set(f"{ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
+                app.rejected_pounds_str.set(f'{round(rejected_pounds,2):,}')
+                # #Reading Error Demand table
+                # ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
+                # app.rejected_pounds_str.set(f"{ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
                 #Displaying demand graphic
                 df = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
             app.manual_data_btn['state'] = 'normal'
@@ -131,8 +133,8 @@ def show_demand_info():
             df = pd.read_excel('Model/Demand.xlsx', sheet_name = 'Demand').astype({'Demand quantity (pounds)': float})
         except:
             print('Could not read Demand. ' + traceback.format_exc())
-
-    #Display info
+    app.statusbar.config(text = '')
+    #Display graphic
     df['Due date'] = pd.to_datetime(df['Due date'])
     df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
     app.ax.clear()
@@ -143,11 +145,12 @@ def show_demand_info():
     app.ax.set_xticklabels(labels = x_dates, rotation = 45, ha = 'right')
     app.fig.canvas.draw_idle()
     #Bring last error demand
+    ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
     error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
     error_demand_pt.adjustColumnWidths()
     error_demand_pt.show()
     right_notebook.tab(1, state = 'normal')
-    app.statusbar.config(text = '')
+    # app.statusbar.config(text = '')
 
 def update_db_from_SAGE_command():
     pgb_steps = 19
@@ -174,16 +177,44 @@ app.manual_data_btn['state'] = 'disabled'
 
 app.add_model_lf()
 
+app.running_simulation_var = tk.StringVar()
+app.running_simulation_lbl = ttk.Label(app.statusbar, textvariable = app.running_simulation_var)
+app.running_simulation_lbl.pack(anchor = 'w') 
+
 def run_experiment_cmd(experiment):
+    app.running_simulation_var.set(f'Starting {experiment} experiment...')
     th = threading.Thread(target = run_experiment, args = (experiment,))
     th.start()
+    app.run_simulation_btn['state'] = 'disabled'
+    app.run_optimization_btn['state'] = 'disabled'
+    app.root.after(100, wait_for_experiment_process, th)
     
 def run_experiment(experiment):
     try:
-        subprocess.run(f'Model\DetSchedOpt_windows-{experiment}.bat ' + app.connection_mode.get().replace(" ", ""))
+        for line in run_experiment_batch(experiment):
+            app.running_simulation_var.set(line.strip())
     except Exception as e:
-        app.show_error(e, message = f"Could not run {experiment} experiment.")
+        app.show_error(e, message = f"Error while running {experiment} experiment.")
+        app.running_simulation_var.set('')
+        
+def run_experiment_batch(experiment):
+    p = subprocess.Popen(f'Model\DetSchedOpt_windows-{experiment}.bat ' + app.connection_mode.get().replace(" ", ""), shell = True, stdout = subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    for stdout_line in iter(p.stdout.readline, ""):
+        yield stdout_line 
+    p.stdout.close()
+    return_code = p.wait()
+    if return_code:
+        raise subprocess.CalledProcessError(return_code, f'Model\DetSchedOpt_windows-{experiment}.bat')
     
+def wait_for_experiment_process(th):
+    if th.is_alive():
+        app.root.after(100, wait_for_experiment_process, th)
+    else:
+        app.run_simulation_btn['state'] = 'normal'
+        app.run_optimization_btn['state'] = 'normal'
+        app.running_simulation_var.set('')
+        print('Experiment closed.')
+
 app.run_simulation_btn['command'] = lambda: run_experiment_cmd('simulation')
 app.run_simulation_btn['state'] = 'disabled'
 app.run_optimization_btn['command'] = lambda: run_experiment_cmd('optimization')
