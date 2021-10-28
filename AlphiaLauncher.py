@@ -1,5 +1,3 @@
-debug = False
-
 #Standard libraries imports
 import tkinter as tk
 from tkinter import ttk
@@ -34,6 +32,11 @@ sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHD
 app = Launcher('DETAILED SCHEDULING OPTIMIZATION')
 app.root.state('zoomed')
 app.root.minsize(1520, 700)
+
+if len(sys.argv) > 1 and sys.argv[1] == 'd':
+    debug = True
+else:
+    debug = False
 
 def connectToHANA():
     connection = None
@@ -100,7 +103,8 @@ def show_demand_info():
                 # ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
                 # app.rejected_pounds_str.set(f"{ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
                 #Displaying demand graphic
-                df = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
+                DEMAND = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
+                ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
             app.manual_data_btn['state'] = 'normal'
         except Exception as e:
             print('Could not connect to cloud database: ' + traceback.format_exc())
@@ -130,22 +134,22 @@ def show_demand_info():
             print('Could not read Error demand. ' + traceback.format_exc())
         try:
             #Displaying demand graphic
-            df = pd.read_excel('Model/Demand.xlsx', sheet_name = 'Demand').astype({'Demand quantity (pounds)': float})
+            DEMAND = pd.read_excel('Model/Demand.xlsx', sheet_name = 'Demand').astype({'Demand quantity (pounds)': float})
         except:
             print('Could not read Demand. ' + traceback.format_exc())
     app.statusbar.config(text = '')
     #Display graphic
-    df['Due date'] = pd.to_datetime(df['Due date'])
-    df['Week start'] = df['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
+    DEMAND['Due date'] = pd.to_datetime(DEMAND['Due date'])
+    DEMAND['Week start'] = DEMAND['Due date'].map(lambda x: x - datetime.timedelta(x.weekday()))
     app.ax.clear()
-    df = df[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
-    app.plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = df, 
+    DEMAND = DEMAND[['Due date', 'Demand quantity (pounds)', 'Week start']].groupby('Week start', as_index = False).sum()
+    app.plot = sns.barplot(x = "Week start", y = "Demand quantity (pounds)", data = DEMAND, 
                   estimator = sum, ci = None, ax = app.ax)
-    x_dates = df['Week start'].dt.strftime('%m/%d/%Y')
+    x_dates = DEMAND['Week start'].dt.strftime('%m/%d/%Y')
     app.ax.set_xticklabels(labels = x_dates, rotation = 45, ha = 'right')
     app.fig.canvas.draw_idle()
     #Bring last error demand
-    ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
+    print('Displaying Error demand.')
     error_demand_pt = CustomTable(app.error_demand_frm, dataframe = ERROR_DEMAND, showtoolbar = False, showstatusbar = False, editable = False, enable_menus = False)
     error_demand_pt.adjustColumnWidths()
     error_demand_pt.show()
@@ -177,13 +181,15 @@ app.manual_data_btn['state'] = 'disabled'
 
 app.add_model_lf()
 
-app.running_simulation_var = tk.StringVar()
-app.running_simulation_lbl = ttk.Label(app.statusbar, textvariable = app.running_simulation_var)
-app.running_simulation_lbl.pack(anchor = 'w') 
-
 def run_experiment_cmd(experiment):
-    app.running_simulation_var.set(f'Starting {experiment} experiment...')
-    th = threading.Thread(target = run_experiment, args = (experiment,))
+    app.statusbar.config(text = f'Starting {experiment} experiment...')
+    # if app.connection_mode.get() == 'Excel':
+        # steps = 7
+    # elif app.connection_mode.get() == 'SAPHANACloud':
+        # steps = 7
+    # app.run_experiment_pgb = ttk.Progressbar(app.statusbar, mode = 'determinate', maximum = steps)
+    # app.run_experiment_pgb.pack(side = 'left')
+    th = threading.Thread(target = run_experiment, args = (experiment,), daemon = True)
     th.start()
     app.run_simulation_btn['state'] = 'disabled'
     app.run_optimization_btn['state'] = 'disabled'
@@ -191,14 +197,22 @@ def run_experiment_cmd(experiment):
     
 def run_experiment(experiment):
     try:
+        i = 1
+        if app.connection_mode.get() == 'SAP HANA Cloud':
+            limit = 10
+        elif app.connection_mode.get() == 'Excel':
+            limit = 9
         for line in run_experiment_batch(experiment):
-            app.running_simulation_var.set(line.strip())
+            #limit so that it only shows the imports logs
+            if i <= limit:
+                app.statusbar.config(text = f'{line.strip()} ({i}/{limit})')
+                i += 1
     except Exception as e:
         app.show_error(e, message = f"Error while running {experiment} experiment.")
-        app.running_simulation_var.set('')
+        # app.running_simulation_var.set('')
         
 def run_experiment_batch(experiment):
-    p = subprocess.Popen(f'Model\DetSchedOpt_windows-{experiment}.bat ' + app.connection_mode.get().replace(" ", ""), shell = True, stdout = subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    p = subprocess.Popen(f'Model\DetSchedOpt_windows-{experiment}.bat ' + app.connection_mode.get().replace(" ", ""), shell = True, stdout = subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, universal_newlines=True)
     for stdout_line in iter(p.stdout.readline, ""):
         yield stdout_line 
     p.stdout.close()
@@ -212,7 +226,7 @@ def wait_for_experiment_process(th):
     else:
         app.run_simulation_btn['state'] = 'normal'
         app.run_optimization_btn['state'] = 'normal'
-        app.running_simulation_var.set('')
+        app.statusbar.config(text = '')
         print('Experiment closed.')
 
 app.run_simulation_btn['command'] = lambda: run_experiment_cmd('simulation')
@@ -223,7 +237,8 @@ app.run_optimization_btn['state'] = 'disabled'
 buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=223A9B02F4538FFC82411EFAF07F6A1D',
               'SCHEDULE REVIEW': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=C316E302FA989EB6B8DC0A7147C612B1',
               'RUN SUMMARY': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=4B636301B40D93B66DBA27FC1BF0C2C9',
-              'SCHEDULE DETAIL': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9',
+              # 'SCHEDULE DETAIL': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=E86A9B02F45046DC9A422670A0016DA9',
+              'SCHEDULE DETAIL': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#/story&/s/17E8E081E2F6C58A4660A2997AB5513D/?mode=view',
               'MASTER DATA ERRORS': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
               }
 app.add_sac_buttons(buttons_dic)
