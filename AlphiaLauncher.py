@@ -13,21 +13,21 @@ import collections
 
 #Third party libraries
 import sqlalchemy
-from sqlalchemy_hana import dialect
+from sqlalchemy.engine import URL
+# from sqlalchemy_hana import dialect
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 import pandas as pd
 import seaborn as sns
 
 #Local imports
-# sys.path.append(os.path.dirname(os.getcwd())+'\\LauncherClass')
 from LauncherClass.Launcher import Launcher, LoadingWindow
 from LauncherClass.CustomTable import CustomTable
 from LauncherClass.ManualInput import ManualInput
 from InputGeneration import * #TODO list functions
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
-sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
+# sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
 
 app = Launcher('DETAILED SCHEDULING OPTIMIZATION')
 app.root.state('zoomed')
@@ -38,16 +38,31 @@ if len(sys.argv) > 1 and sys.argv[1] == 'd':
 else:
     debug = False
 
-def connectToHANA():
+# def connectToSQL():
+    # connection = None
+    # try:
+        # connection = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
+    # except Exception as e:
+        # print('Could not establish connection. ' + str(e))
+        # tk.messagebox.showerror(title = 'Connection error', message = 'Could not establish connection.\n\n' + ''.join(traceback.format_exception_only(type(e), e)))
+    # return connection
+
+def connectToSQL():
     connection = None
+    direccion_servidor = '10.4.240.65'
+    nombre_bd = 'AnyLogic'
+    nombre_usuario = 'AnyLogic'
+    password = 'Axr24523'
     try:
-        connection = sqlalchemy.create_engine('hana://DBADMIN:BISjan2021*@8969f818-750f-468f-afff-3dc99a6e805b.hana.trial-us10.hanacloud.ondemand.com:443/?encrypt=true&validateCertificate=false').connect()
+        connection_string = f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={direccion_servidor};DATABASE={nombre_bd};UID={nombre_usuario};PWD={password}'
+        connection_url = URL.create("mssql+pyodbc", query={"odbc_connect": connection_string})
+        connection = sqlalchemy.create_engine(connection_url).connect()
     except Exception as e:
         print('Could not establish connection. ' + str(e))
         tk.messagebox.showerror(title = 'Connection error', message = 'Could not establish connection.\n\n' + ''.join(traceback.format_exception_only(type(e), e)))
     return connection
 
-app.connectToHANA = connectToHANA
+app.connectToSQL = connectToSQL
 
 def add_manual_input(app):
     app.lw = LoadingWindow(app)
@@ -58,7 +73,7 @@ def add_manual_input(app):
     
 def load_tables(app):
     try:
-        with app.connectToHANA() as connection:
+        with app.connectToSQL() as connection:
             app.q.append('Loading Extruders Schedule')
             app.manual_window.add_table('Extruders Schedule', 'extruders_schedule', connection)
             app.q.append('Loading Families')
@@ -87,12 +102,12 @@ def show_demand_info():
     # app.ax.cla()
     # app.ax = app.fig.add_subplot(111)
     # app.ax.xaxis_date()
-    if app.connection_mode.get() == 'SAP HANA Cloud':
+    if app.connection_mode.get() == 'SQL Server':
         try:
             app.last_update_str.set('Retrieving data...')
             app.total_demand_str.set('Retrieving data...')
             app.rejected_pounds_str.set('Retrieving data...')
-            with app.connectToHANA() as connection:
+            with app.connectToSQL() as connection:
                 #Bring time of last update
                 # last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
                 last_time, total_demand, rejected_pounds = connection.execute('SELECT * FROM "SAGE"."LOG2"').first()
@@ -103,8 +118,8 @@ def show_demand_info():
                 # ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
                 # app.rejected_pounds_str.set(f"{ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
                 #Displaying demand graphic
-                DEMAND = pd.read_sql_table('demand', schema = 'anylogic', con = connection).astype({'Demand quantity (pounds)': float})
-                ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
+                DEMAND = pd.read_sql_table('DEMAND', schema = 'ANYLOGIC', con = connection).astype({'Demand quantity (pounds)': float})
+                ERROR_DEMAND = pd.read_sql_table('ERROR_DEMAND', schema = 'SAC_OUTPUT', con = connection)
             app.manual_data_btn['state'] = 'normal'
         except Exception as e:
             print('Could not connect to cloud database: ' + traceback.format_exc())
@@ -158,7 +173,7 @@ def show_demand_info():
 
 def update_db_from_SAGE_command():
     pgb_steps = 19
-    if app.connection_mode.get() == 'SAP HANA Cloud':
+    if app.connection_mode.get() == 'SQL Server':
         pgb_steps += 15
     elif app.connection_mode.get() == 'Excel':
         pgb_steps += 1
@@ -198,7 +213,7 @@ def run_experiment_cmd(experiment):
 def run_experiment(experiment):
     try:
         i = 1
-        if app.connection_mode.get() == 'SAP HANA Cloud':
+        if app.connection_mode.get() == 'SQL Server':
             limit = 10
         elif app.connection_mode.get() == 'Excel':
             limit = 9
@@ -241,7 +256,7 @@ buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.clou
               'SCHEDULE DETAIL': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#/story&/s/17E8E081E2F6C58A4660A2997AB5513D/?mode=view',
               'MASTER DATA ERRORS': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
               }
-app.add_sac_buttons(buttons_dic)
+# app.add_sac_buttons(buttons_dic)
 
 right_frame = ttk.Frame(app.root)
 right_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
@@ -266,9 +281,9 @@ connection_mode_label.pack(pady = 10, padx = (40, 10), side = tk.LEFT)
 
 app.connection_mode = tk.StringVar()
 if debug:
-    connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud', 'Excel'], textvariable = app.connection_mode, state = 'readonly')
+    connection_combobox = ttk.Combobox(import_settings_lf, values = ['SQL Server', 'Excel'], textvariable = app.connection_mode, state = 'readonly')
 else:
-    connection_combobox = ttk.Combobox(import_settings_lf, values = ['SAP HANA Cloud'], textvariable = app.connection_mode, state = 'readonly')
+    connection_combobox = ttk.Combobox(import_settings_lf, values = ['SQL Server'], textvariable = app.connection_mode, state = 'readonly')
 # connection_combobox.grid(column = 1, row = 0, padx = 40, pady = 10, sticky = 'w')
 connection_combobox.pack(padx = 10, pady = 10, side = tk.LEFT)
 

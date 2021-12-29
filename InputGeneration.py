@@ -45,21 +45,21 @@ class AlphiaInputGenerator():
                     print(f'Couldn\'t load table {table}: ' + traceback.format_exc())
                     self.app.register_error(f'Couldn\'t load table {table}: ', e)
                     return 1
-                    #try to read backup from HANA?
+                    #try to read backup from SQL Server?
 
-            #Upload raw SAGE tables into HANA
-            if self.app.connection_mode.get() == 'SAP HANA Cloud':
-                with self.app.connectToHANA() as connection:
+            #Upload raw SAGE tables into SQL Server
+            if self.app.connection_mode.get() == 'SQL Server':
+                with self.app.connectToSQL() as connection:
                     for table in table_urls:
                         self.app.q.append(f'Updating {table} in cloud database')
                         self.app.lw.loading_pgb.step()
                         try:
                             connection.execute(f'DELETE FROM {SAGE_TABLES_SCHEMA}.{table}')
                             getattr(self, table).to_sql(table.lower(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA)
-                            print(f'Table {table} was uploaded to HANA succesfully.')
+                            print(f'Table {table} was uploaded to SQL Server succesfully.')
                         except Exception as e:
-                            print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
-                            self.app.register_error(f'Couldn\'t save {table} table into HANA. ', e)
+                            print(f'Couldn\'t save {table} table into SQL Server. ' + traceback.format_exc())
+                            self.app.register_error(f'Couldn\'t save {table} table into SQL Server. ', e)
                             return 1
             
             if self.app.to_excel.get():
@@ -72,26 +72,26 @@ class AlphiaInputGenerator():
                         getattr(self, table).to_excel(f'Raw tables/{table.lower()}.xlsx', index = False)
                         print(f'Table {table} was saved as Excel spreadsheet.')
                     except Exception as e:
-                        print(f'Couldn\'t save {table} table into HANA. ' + traceback.format_exc())
+                        print(f'Couldn\'t save {table} table into SQL Server. ' + traceback.format_exc())
                         self.app.register_error(f'Couldn\'t save {table} as Excel spreadsheet. ', e)
                         return 1
 
-            #Read manual files from HANA
+            #Read manual files from SQL Server
             #TODO pasar a diccionario con valores la lista de columnas
             manual_files = ['Model_WorkCenters', 'Model_WorkCenters_3', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families', 'Extruders_Schedule']
             
-            if self.app.connection_mode.get() == 'SAP HANA Cloud':
-                with self.app.connectToHANA() as connection:
+            if self.app.connection_mode.get() == 'SQL Server':
+                with self.app.connectToSQL() as connection:
                     for table in manual_files:
                         self.app.q.append(f'Loading {table}')
                         self.app.lw.loading_pgb.step()
                         try:
-                            df = pd.read_sql_table(table.lower(), schema = 'manual_files', con = connection).astype(str)
+                            df = pd.read_sql_table(table, schema = 'MANUAL_FILES', con = connection).astype(str)
                             setattr(self, table, df)
-                            print(f'Table {table} succesfully read from HANA.')
+                            print(f'Table {table} succesfully read from SQL Server.')
                         except Exception as e:
-                            print('Couldn\'t read table {table} from HANA. ' + traceback.format_exc())
-                            self.app.register_error(f'Couldn\'t read table {table} from HANA. ', e)
+                            print('Couldn\'t read table {table} from SQL Server. ' + traceback.format_exc())
+                            self.app.register_error(f'Couldn\'t read table {table} from SQL Server. ', e)
                             return 1
             #Read manual files from Excel files
             elif self.app.connection_mode.get() == 'Excel':
@@ -174,17 +174,17 @@ class AlphiaInputGenerator():
             return 1
 
         ### Uploading generated tables
-        if self.app.connection_mode.get() == 'SAP HANA Cloud':
-            with self.app.connectToHANA() as connection:
+        if self.app.connection_mode.get() == 'SQL Server':
+            with self.app.connectToSQL() as connection:
                 #1) Breakout
                 try:
                     self.app.q.append('Uploading Breakout table')
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."BREAKOUT_FILE"')
                     self.BREAKOUT.to_sql('breakout_file', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
-                    print('Breakout table succesfully uploaded to HANA.')
+                    print('Breakout table succesfully uploaded to SQL Server.')
                 except Exception as e:
-                    print('Failed to upload Breakout table to HANA: ', e)
+                    print('Failed to upload Breakout table to SQL Server: ', e)
                     return 1
 
                 #2) Packlines
@@ -193,10 +193,10 @@ class AlphiaInputGenerator():
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."PACKLINES"')
                     self.PACKLINES.to_sql('packlines', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
-                    print('Packlines table succesfully uploaded to HANA.')
+                    print('Packlines table succesfully uploaded to SQL Server.')
                 except Exception as e:
-                    print('Failed to upload Packlines table to HANA: ' + traceback.format_exc())
-                    self.app.register_error('Failed to upload Packlines table to HANA: ', e)
+                    print('Failed to upload Packlines table to SQL Server: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Packlines table to SQL Server: ', e)
                     return 1
                 #3) Extruders
                 try:
@@ -204,10 +204,10 @@ class AlphiaInputGenerator():
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."EXTRUDERS"')
                     self.EXTRUDERS.to_sql('extruders', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists ='append', index = False)
-                    print('Extruders table succesfully uploaded to HANA.')
+                    print('Extruders table succesfully uploaded to SQL Server.')
                 except Exception as e:
-                    print('Failed to upload Extruders table to HANA: ' + traceback.format_exc())
-                    self.app.register_error('Failed to upload Extruders table to HANA: ', e)
+                    print('Failed to upload Extruders table to SQL Server: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Extruders table to SQL Server: ', e)
                     return 1
 
                 #4) Demand (must be created after Breakout, Packlines and Extruders in order to be able to validate)
@@ -216,10 +216,10 @@ class AlphiaInputGenerator():
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."DEMAND"')
                     self.DEMAND.to_sql('demand', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
-                    print('Demand table succesfully uploaded to HANA.')
+                    print('Demand table succesfully uploaded to SQL Server.')
                 except Exception as e:
-                    print('Failed to upload Demand table to HANA: ' + traceback.format_exc())
-                    self.app.register_error('Failed to upload Demand table to HANA: ', e)
+                    print('Failed to upload Demand table to SQL Server: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Demand table to SQL Server: ', e)
                     return 1
                 #5) Error Demand
                 try:
@@ -227,10 +227,10 @@ class AlphiaInputGenerator():
                     self.app.lw.loading_pgb.step()
                     connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
                     self.ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
-                    print('Error demand table succesfully uploaded to HANA.')
+                    print('Error demand table succesfully uploaded to SQL Server.')
                 except Exception as e:
-                    print('Failed to upload Error demand table to HANA: ' + traceback.format_exc())
-                    self.app.register_error('Failed to upload Error demand table to HANA: ', e)
+                    print('Failed to upload Error demand table to SQL Server: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Error demand table to SQL Server: ', e)
                     return 1
 
                 #6) Inventory bulk (must be created after Demand in order to validate)
@@ -239,10 +239,10 @@ class AlphiaInputGenerator():
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."BULK_INVENTORY"')
                     self.INVENTORY_BULK.to_sql('bulk_inventory', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
-                    print('Bulk inventory table succesfully uploaded to HANA.')
+                    print('Bulk inventory table succesfully uploaded to SQL Server.')
                 except Exception as e:
-                    print('Failed to upload Bulk inventory table to HANA: ' + traceback.format_exc())
-                    self.app.register_error('Failed to upload Bulk inventory table to HANA: ', e)
+                    print('Failed to upload Bulk inventory table to SQL Server: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload Bulk inventory table to SQL Server: ', e)
                     return 1
                 
                 # #7) WO Demand for SAC
@@ -252,8 +252,8 @@ class AlphiaInputGenerator():
                     connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
                     self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
                 except Exception as e:
-                    print('Failed to upload WO Demand table to HANA: ' + traceback.format_exc())
-                    self.app.register_error('Failed to upload WO Demand table to HANA: ', e)
+                    print('Failed to upload WO Demand table to SQL Server: ' + traceback.format_exc())
+                    self.app.register_error('Failed to upload WO Demand table to SQL Server: ', e)
                     return 1
                     
                 #8) Save upload time info
