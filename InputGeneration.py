@@ -48,19 +48,19 @@ class AlphiaInputGenerator():
                     #try to read backup from SQL Server?
 
             #Upload raw SAGE tables into SQL Server
-            if self.app.connection_mode.get() == 'SQL Server':
-                with self.app.connectToSQL() as connection:
-                    for table in table_urls:
-                        self.app.q.append(f'Updating {table} in cloud database')
-                        self.app.lw.loading_pgb.step()
-                        try:
-                            connection.execute(f'DELETE FROM {SAGE_TABLES_SCHEMA}.{table.upper()}')
-                            getattr(self, table).iloc[:10].to_sql(table.upper(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA, method = 'multi')
-                            print(f'Table {table} was uploaded to SQL Server succesfully.')
-                        except Exception as e:
-                            print(f'Couldn\'t save {table} table into SQL Server. ' + traceback.format_exc())
-                            self.app.register_error(f'Couldn\'t save {table} table into SQL Server. ', e)
-                            return 1
+            # if self.app.connection_mode.get() == 'SQL Server':
+                # with self.app.connectToSQL() as connection:
+                    # for table in table_urls:
+                        # self.app.q.append(f'Updating {table} in cloud database')
+                        # self.app.lw.loading_pgb.step()
+                        # try:
+                            # connection.execute(f'DELETE FROM {SAGE_TABLES_SCHEMA}.{table.upper()}')
+                            # getattr(self, table).iloc[:10].to_sql(table.upper(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA, method = 'multi')
+                            # print(f'Table {table} was uploaded to SQL Server succesfully.')
+                        # except Exception as e:
+                            # print(f'Couldn\'t save {table} table into SQL Server. ' + traceback.format_exc())
+                            # self.app.register_error(f'Couldn\'t save {table} table into SQL Server. ', e)
+                            # return 1
             
             if self.app.to_excel.get():
                 for table in table_urls:
@@ -320,9 +320,9 @@ class AlphiaInputGenerator():
         BOM = self.BOM
         ItemMaster = self.ItemMaster
         Facility = self.Facility
-        MD_Bulk_Code = self.MD_Bulk_Code
-        Finished_Good = self.Finished_Good
-        Families = self.Families
+        MD_Bulk_Code = self.MD_BULK_CODE
+        Finished_Good = self.FINISHED_GOOD
+        Families = self.FAMILIES
     
         BOM['Quantity'] = BOM['Quantity'].astype(float)
         #Merging with ItemMaster
