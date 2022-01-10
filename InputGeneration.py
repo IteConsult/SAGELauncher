@@ -399,9 +399,9 @@ class AlphiaInputGenerator():
     def generate_packlines_and_extruders(self):
         RoutingAndRates = self.RoutingAndRates
         ItemMaster = self.ItemMaster
-        Model_WorkCenters = self.Model_WorkCenters_3
-        Facility = self.Facility
-        Finished_Good = self.Finished_Good
+        Model_WorkCenters = self.MODEL_WORKCENTERS_3
+        Facility = self.FACILITY
+        Finished_Good = self.FINISHED_GOOD
     
         #Filter Bomcodes according to Facility
             #TODO transfer dictionary to manual table
@@ -466,14 +466,14 @@ class AlphiaInputGenerator():
         WorkOrders = self.WorkOrders.copy()
         SalesOrders = self.SalesOrders.copy()
         ItemMaster = self.ItemMaster
-        Facility = self.Facility
-        Model_WorkCenters = self.Model_WorkCenters_3
+        Facility = self.FACILITY
+        Model_WorkCenters = self.MODEL_WORKCENTERS_3
         
         #TODO mejorar:
-        PC_WorkCenters = self.Model_WorkCenters
+        PC_WorkCenters = self.MODEL_WORKCENTERS
         
-        Product_Priority = self.Product_Priority
-        Customer_Priority = self.Customer_Priority
+        Product_Priority = self.PRODUCT_PRIORITY
+        Customer_Priority = self.CUSTOMER_PRIORITY
         BREAKOUT = self.BREAKOUT
         PACKLINES = self.PACKLINES
         EXTRUDERS = self.EXTRUDERS
@@ -582,8 +582,8 @@ class AlphiaInputGenerator():
     def generate_inventory_bulk(self):
         Inventory = self.Inventory
         ItemMaster = self.ItemMaster
-        Facility = self.Facility
-        Model_WorkCenters = self.Model_WorkCenters_3
+        Facility = self.FACILITY
+        Model_WorkCenters = self.MODEL_WORKCENTERS_3
         DEMAND = self.DEMAND
         BREAKOUT = self.BREAKOUT
     
