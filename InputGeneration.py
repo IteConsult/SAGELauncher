@@ -400,7 +400,7 @@ class AlphiaInputGenerator():
         RoutingAndRates = self.RoutingAndRates
         ItemMaster = self.ItemMaster
         Model_WorkCenters = self.MODEL_WORKCENTERS_3
-        Facility = self.FACILITY
+        Facility = self.Facility
         Finished_Good = self.FINISHED_GOOD
     
         #Filter Bomcodes according to Facility
@@ -466,7 +466,7 @@ class AlphiaInputGenerator():
         WorkOrders = self.WorkOrders.copy()
         SalesOrders = self.SalesOrders.copy()
         ItemMaster = self.ItemMaster
-        Facility = self.FACILITY
+        Facility = self.Facility
         Model_WorkCenters = self.MODEL_WORKCENTERS_3
         
         #TODO mejorar:
@@ -582,7 +582,7 @@ class AlphiaInputGenerator():
     def generate_inventory_bulk(self):
         Inventory = self.Inventory
         ItemMaster = self.ItemMaster
-        Facility = self.FACILITY
+        Facility = self.Facility
         Model_WorkCenters = self.MODEL_WORKCENTERS_3
         DEMAND = self.DEMAND
         BREAKOUT = self.BREAKOUT
