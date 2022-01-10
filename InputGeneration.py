@@ -54,8 +54,8 @@ class AlphiaInputGenerator():
                         self.app.q.append(f'Updating {table} in cloud database')
                         self.app.lw.loading_pgb.step()
                         try:
-                            connection.execute(f'DELETE FROM {SAGE_TABLES_SCHEMA}.{table}')
-                            getattr(self, table).to_sql(table.lower(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA)
+                            connection.execute(f'DELETE FROM {SAGE_TABLES_SCHEMA}.{table.upper()}')
+                            getattr(self, table).iloc[:10].to_sql(table.upper(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA, method = 'multi')
                             print(f'Table {table} was uploaded to SQL Server succesfully.')
                         except Exception as e:
                             print(f'Couldn\'t save {table} table into SQL Server. ' + traceback.format_exc())
@@ -78,7 +78,7 @@ class AlphiaInputGenerator():
 
             #Read manual files from SQL Server
             #TODO pasar a diccionario con valores la lista de columnas
-            manual_files = ['Model_WorkCenters', 'Model_WorkCenters_3', 'MD_Bulk_Code', 'Finished_Good', 'Product_Priority', 'Customer_Priority', 'Families', 'Extruders_Schedule']
+            manual_files = ['MODEL_WORKCENTERS', 'MODEL_WORKCENTERS_3', 'MD_BULK_CODE', 'FINISHED_GOOD', 'PRODUCT_PRIORITY', 'CUSTOMER_PRIORITY', 'FAMILIES', 'EXTRUDERS_SCHEDULE']
             
             if self.app.connection_mode.get() == 'SQL Server':
                 with self.app.connectToSQL() as connection:

@@ -103,32 +103,38 @@ def show_demand_info():
     # app.ax = app.fig.add_subplot(111)
     # app.ax.xaxis_date()
     if app.connection_mode.get() == 'SQL Server':
-        try:
-            app.last_update_str.set('Retrieving data...')
-            app.total_demand_str.set('Retrieving data...')
-            app.rejected_pounds_str.set('Retrieving data...')
-            with app.connectToSQL() as connection:
+        # app.manual_data_btn['state'] = 'normal'
+        with app.connectToSQL() as connection:
+            try:
+                app.last_update_str.set('Retrieving data...')
+                app.total_demand_str.set('Retrieving data...')
+                app.rejected_pounds_str.set('Retrieving data...')
                 #Bring time of last update
                 # last_time, total_demand = connection.execute('SELECT * FROM "SAGE"."LOG"').first()
                 last_time, total_demand, rejected_pounds = connection.execute('SELECT * FROM "SAGE"."LOG2"').first()
                 app.last_update_str.set(last_time.strftime("%m/%d/%y %H:%M"))
                 app.total_demand_str.set(f'{round(total_demand, 2):,}')
                 app.rejected_pounds_str.set(f'{round(rejected_pounds,2):,}')
+            except Exception as e:
+                print('Could not connect to cloud database: ' + traceback.format_exc())
+                # app.statusbar.config(text = 'Could not connect to cloud database.')
+                app.last_update_str.set('Could not retrieve information.')
+                app.total_demand_str.set('Could not retrieve information.')    
+                app.rejected_pounds_str.set('Could not retrieve information.')
+                app.statusbar.config(text = '')
+                return
+            try:
                 # #Reading Error Demand table
                 # ERROR_DEMAND = pd.read_sql_table('error_demand', schema = 'sac_output', con = connection)
                 # app.rejected_pounds_str.set(f"{ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
                 #Displaying demand graphic
                 DEMAND = pd.read_sql_table('DEMAND', schema = 'ANYLOGIC', con = connection).astype({'Demand quantity (pounds)': float})
                 ERROR_DEMAND = pd.read_sql_table('ERROR_DEMAND', schema = 'SAC_OUTPUT', con = connection)
-            app.manual_data_btn['state'] = 'normal'
-        except Exception as e:
-            print('Could not connect to cloud database: ' + traceback.format_exc())
-            # app.statusbar.config(text = 'Could not connect to cloud database.')
-            app.last_update_str.set('Could not retrieve information.')
-            app.total_demand_str.set('Could not retrieve information.')    
-            app.rejected_pounds_str.set('Could not retrieve information.')
-            app.statusbar.config(text = '')
-            return
+            except Exception as e:
+                print('Could not connect to cloud database: ' + traceback.format_exc())
+                # app.statusbar.config(text = 'Could not connect to cloud database.')
+                app.statusbar.config(text = '')
+                return
     elif app.connection_mode.get() == 'Excel':
         try:
             with open('Model/Database Input/ld.log', 'r') as last_demand_info_log:
@@ -256,7 +262,7 @@ buttons_dic = {'DEMAND REVIEW': 'https://ite-consult.br10.hanacloudservices.clou
               'SCHEDULE DETAIL': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#/story&/s/17E8E081E2F6C58A4660A2997AB5513D/?mode=view',
               'MASTER DATA ERRORS': 'https://ite-consult.br10.hanacloudservices.cloud.sap/sap/fpa/ui/app.html#;view_id=story;storyId=315A9B02F45146C8478A9C88FAA53442',
               }
-# app.add_sac_buttons(buttons_dic)
+app.add_sac_buttons(buttons_dic, disabled = True)
 
 right_frame = ttk.Frame(app.root)
 right_frame.pack(side = tk.LEFT, fill = tk.BOTH, expand = True)
