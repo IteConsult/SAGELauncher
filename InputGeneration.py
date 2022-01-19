@@ -55,7 +55,7 @@ class AlphiaInputGenerator():
                         # self.app.lw.loading_pgb.step()
                         # try:
                             # connection.execute(f'DELETE FROM {SAGE_TABLES_SCHEMA}.{table.upper()}')
-                            # getattr(self, table).iloc[:10].to_sql(table.upper(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA, method = 'multi')
+                            # getattr(self, table).iloc[:10].to_sql(table.upper(), con = connection, if_exists = 'append', index = False, schema = SAGE_TABLES_SCHEMA)
                             # print(f'Table {table} was uploaded to SQL Server succesfully.')
                         # except Exception as e:
                             # print(f'Couldn\'t save {table} table into SQL Server. ' + traceback.format_exc())
@@ -181,10 +181,11 @@ class AlphiaInputGenerator():
                     self.app.q.append('Uploading Breakout table')
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."BREAKOUT_FILE"')
-                    self.BREAKOUT.to_sql('breakout_file', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
+                    self.BREAKOUT.to_sql('BREAKOUT_FILE', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Breakout table succesfully uploaded to SQL Server.')
                 except Exception as e:
                     print('Failed to upload Breakout table to SQL Server: ', e)
+                    self.app.register_error('Failed to upload Packlines table to SQL Server: ', e)
                     return 1
 
                 #2) Packlines
@@ -192,7 +193,7 @@ class AlphiaInputGenerator():
                     self.app.q.append('Uploading Packlines table')
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."PACKLINES"')
-                    self.PACKLINES.to_sql('packlines', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
+                    self.PACKLINES.to_sql('PACKLINES', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Packlines table succesfully uploaded to SQL Server.')
                 except Exception as e:
                     print('Failed to upload Packlines table to SQL Server: ' + traceback.format_exc())
@@ -203,7 +204,7 @@ class AlphiaInputGenerator():
                     self.app.q.append('Uploading Extruders table')
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."EXTRUDERS"')
-                    self.EXTRUDERS.to_sql('extruders', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists ='append', index = False)
+                    self.EXTRUDERS.to_sql('EXTRUDERS', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists ='append', index = False)
                     print('Extruders table succesfully uploaded to SQL Server.')
                 except Exception as e:
                     print('Failed to upload Extruders table to SQL Server: ' + traceback.format_exc())
@@ -215,7 +216,7 @@ class AlphiaInputGenerator():
                     self.app.q.append('Uploading Demand table')
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."DEMAND"')
-                    self.DEMAND.to_sql('demand', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
+                    self.DEMAND.to_sql('DEMAND', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Demand table succesfully uploaded to SQL Server.')
                 except Exception as e:
                     print('Failed to upload Demand table to SQL Server: ' + traceback.format_exc())
@@ -225,8 +226,8 @@ class AlphiaInputGenerator():
                 try:
                     self.app.q.append('Uploading Error demand table')
                     self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "SAC_OUTPUT"."ERROR_DEMAND"')
-                    self.ERROR_DEMAND.to_sql('error_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                    connection.execute('DELETE FROM "OUTPUT"."ERROR_DEMAND"')
+                    self.ERROR_DEMAND.to_sql('ERROR_DEMAND', schema = 'OUTPUT', con = connection, if_exists = 'append', index = False)
                     print('Error demand table succesfully uploaded to SQL Server.')
                 except Exception as e:
                     print('Failed to upload Error demand table to SQL Server: ' + traceback.format_exc())
@@ -238,7 +239,7 @@ class AlphiaInputGenerator():
                     self.app.q.append('Uploading Bulk inventory table')
                     self.app.lw.loading_pgb.step()
                     connection.execute(f'DELETE FROM "{ANYLOGIC_TABLES_SCHEMA}"."BULK_INVENTORY"')
-                    self.INVENTORY_BULK.to_sql('bulk_inventory', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
+                    self.INVENTORY_BULK.to_sql('BULK_INVENTORY', schema = ANYLOGIC_TABLES_SCHEMA, con = connection, if_exists = 'append', index = False)
                     print('Bulk inventory table succesfully uploaded to SQL Server.')
                 except Exception as e:
                     print('Failed to upload Bulk inventory table to SQL Server: ' + traceback.format_exc())
@@ -246,15 +247,15 @@ class AlphiaInputGenerator():
                     return 1
                 
                 # #7) WO Demand for SAC
-                try:
-                    self.app.q.append('Uploading WO Demand table')
-                    self.app.lw.loading_pgb.step()
-                    connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
-                    self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
-                except Exception as e:
-                    print('Failed to upload WO Demand table to SQL Server: ' + traceback.format_exc())
-                    self.app.register_error('Failed to upload WO Demand table to SQL Server: ', e)
-                    return 1
+                # try:
+                    # self.app.q.append('Uploading WO Demand table')
+                    # self.app.lw.loading_pgb.step()
+                    # connection.execute('DELETE FROM "SAC_OUTPUT"."WO_DEMAND" WHERE "Process Date" = \'%s\' and "Run" = \'1\'' % datetime.date.today().strftime("%Y-%m-%d"))
+                    # self.WO_DEMAND.to_sql('wo_demand', schema = 'sac_output', con = connection, if_exists = 'append', index = False)
+                # except Exception as e:
+                    # print('Failed to upload WO Demand table to SQL Server: ' + traceback.format_exc())
+                    # self.app.register_error('Failed to upload WO Demand table to SQL Server: ', e)
+                    # return 1
                     
                 #8) Save upload time info
                 try:

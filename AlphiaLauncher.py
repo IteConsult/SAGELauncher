@@ -28,6 +28,8 @@ from InputGeneration import * #TODO list functions
 
 #This line prevents the bundled .exe from throwing a sqlalchemy-related error
 # sqlalchemy.dialects.registry.register('hana', 'sqlalchemy_hana.dialect', 'HANAHDBCLIDialect')
+import sqlalchemy.sql.default_comparator
+import pyodbc
 
 app = Launcher('DETAILED SCHEDULING OPTIMIZATION')
 app.root.state('zoomed')
@@ -129,7 +131,7 @@ def show_demand_info():
                 # app.rejected_pounds_str.set(f"{ERROR_DEMAND['Rejected Pounds'].sum():,.2f}")
                 #Displaying demand graphic
                 DEMAND = pd.read_sql_table('DEMAND', schema = 'ANYLOGIC', con = connection).astype({'Demand quantity (pounds)': float})
-                ERROR_DEMAND = pd.read_sql_table('ERROR_DEMAND', schema = 'SAC_OUTPUT', con = connection)
+                ERROR_DEMAND = pd.read_sql_table('ERROR_DEMAND', schema = 'OUTPUT', con = connection)
             except Exception as e:
                 print('Could not connect to cloud database: ' + traceback.format_exc())
                 # app.statusbar.config(text = 'Could not connect to cloud database.')
